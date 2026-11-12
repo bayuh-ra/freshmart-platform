@@ -1,0 +1,410 @@
+@import "tailwindcss";
+
+/* ============================================================
+   LAP IT Solutions — brand tokens
+   Ported from LAP_IT_DESIGN_SYSTEM.md (the sibling ERP app's
+   React/MUI theme). This app is Tailwind CSS, not MUI, so these
+   are expressed as CSS custom properties + arbitrary-value
+   Tailwind classes throughout the codebase, not a JS theme object.
+   Palette:
+     royalBlue     #1e40af  primary (buttons, links, active nav)
+     royalBlueDeep #1e3a8a  primary hover / dark variant
+     royalBlueLight#2563eb  accent / gradient partner for primary
+     red           #dc2626  secondary brand ("Lap IT red")
+     redDeep       #b91c1c  red hover
+     cyan          #06b6d4  info
+     emerald       #10b981  success
+     amber         #f59e0b  warning
+     errorRed      #ef4444  error
+   ============================================================ */
+
+:root {
+  --background: #fafafa;
+  --foreground: #0f0f1a;
+
+  --color-royal-blue: #1e40af;
+  --color-royal-blue-deep: #1e3a8a;
+  --color-royal-blue-light: #2563eb;
+  --color-lap-red: #dc2626;
+  --color-lap-red-deep: #b91c1c;
+  --color-cyan: #06b6d4;
+  --color-emerald: #10b981;
+  --color-amber: #f59e0b;
+  --color-error-red: #ef4444;
+
+  --text-secondary: #525569;
+  --text-disabled: #a3a6b8;
+  --divider: rgba(15, 15, 26, 0.08);
+
+  --radius-card: 12px;
+  --radius-control: 8px;
+
+  /* ------------------------------------------------------------
+     shadcn/ui semantic tokens — added for the DataTable framework
+     (src/components/ui/shadcn/, src/components/data-table/). Mapped
+     onto this app's own existing brand colors so a "literal shadcn
+     install" still stays visually consistent with the rest of the
+     app, rather than introducing shadcn's own default slate palette
+     alongside it. See CLAUDE.md's DataTable section for the full
+     reasoning. Scoped to the new shadcn-derived components only —
+     every pre-existing component keeps using its own hardcoded
+     Tailwind classes/hex values, unchanged.
+     ------------------------------------------------------------ */
+  --radius: 0.5rem;
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+  --primary: #1e40af;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #f3f4f6;
+  --accent-foreground: #111827;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #1e40af;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-ibm-plex-sans);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter, system-ui, sans-serif);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-ibm-plex-sans, var(--font-inter, system-ui, sans-serif));
+}
+
+input, textarea, select {
+  color: var(--foreground) !important;
+}
+
+::placeholder {
+  color: #9CA3AF !important;
+  opacity: 1 !important;
+}
+
+/* Soft 4px focus glow (replaces a hard outline ring) — LAP_IT_DESIGN_SYSTEM.md
+   section 6. Apply via `focus-glow` class on inputs/buttons that want the
+   brand focus treatment instead of Tailwind's default ring. */
+.focus-glow:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.12);
+  border-color: #1e40af;
+}
+
+/* Custom scrollbar — 10px, transparent track, rounded thumb with a
+   content-box padding trick so it never touches the edge. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 15, 26, 0.16) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 15, 26, 0.16);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(15, 15, 26, 0.3);
+}
+
+/* Ambient login-page mesh-orb drift, per LAP_IT_DESIGN_SYSTEM.md section 8 */
+@keyframes lap-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -20px) scale(1.08); }
+}
+
+@keyframes lap-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-24px, 24px) scale(1.05); }
+}
+
+@keyframes lap-drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(18px, 18px) scale(1.1); }
+}
+
+@keyframes lap-rise-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.lap-rise-in {
+  animation: lap-rise-in 0.5s ease both;
+}
+
+/* Notification-bell attention wiggle (2026-08-29) — applied to the bell
+   icon whenever there's at least one unread notification, so it's genuinely
+   noticeable rather than a passive badge easy to miss. Periodic (every 4s,
+   not continuous) so it draws the eye without being distracting while
+   staring at the rest of the page. */
+@keyframes lap-bell-wiggle {
+  0%, 92%, 100% { transform: rotate(0deg); }
+  93% { transform: rotate(-12deg); }
+  94% { transform: rotate(10deg); }
+  95% { transform: rotate(-8deg); }
+  96% { transform: rotate(6deg); }
+  97% { transform: rotate(-4deg); }
+  98% { transform: rotate(0deg); }
+}
+
+.lap-bell-wiggle {
+  animation: lap-bell-wiggle 4s ease-in-out infinite;
+  transform-origin: top center;
+}
+
+/* Task Alarm (step 6G) — breathing + radiating alarm state.
+   Root cause of the "static" look in 6E: alarm cards sit inside
+   overflow-y-auto kanban columns with only ~10-12px of padding, so the
+   outer box-shadow glow (8px spread + 18px blur) was mostly clipped, and the
+   only movement left was a 1.5% scale — a 2-4px change nobody notices.
+
+   Now three layers, all pure CSS:
+     1. the card itself breathes (scale 1 -> 1.022) while its glow and an
+        INSET glow strengthen — the inset part is never clipped;
+     2. ::before and ::after are two rings that start on the card edge,
+        travel outward ~10px (fits the column padding) and fade, offset by
+        half a cycle so a new ring launches while the previous one fades;
+     3. the border/background pulse between red/orange tints.
+   Cycle is 1.6s. Only elements with .task-alarm-active animate. */
+@keyframes task-alarm-breathe {
+  0%, 100% {
+    transform: scale(1);
+    border-color: #dc2626;
+    background-color: #fff1e6;
+    box-shadow:
+      0 0 0 1px rgba(220, 38, 38, 0.6),
+      0 0 6px 1px rgba(249, 115, 22, 0.45),
+      inset 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+  50% {
+    transform: scale(1.022);
+    border-color: #f97316;
+    background-color: #ffe0c2;
+    box-shadow:
+      0 0 0 3px rgba(220, 38, 38, 0.55),
+      0 0 14px 4px rgba(249, 115, 22, 0.6),
+      inset 0 0 18px 2px rgba(239, 68, 68, 0.35);
+  }
+}
+
+@keyframes task-alarm-radiate {
+  0% {
+    inset: -2px;
+    opacity: 0.95;
+    border-width: 3px;
+  }
+  70% {
+    opacity: 0.35;
+  }
+  100% {
+    inset: -11px;
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+.task-alarm-active {
+  position: relative;
+  z-index: 1;
+  border: 2px solid #dc2626;
+  background-color: #fff1e6;
+  animation: task-alarm-breathe 1.6s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+
+.task-alarm-active::before,
+.task-alarm-active::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 12px;
+  border: 3px solid #ef4444;
+  pointer-events: none;
+  animation: task-alarm-radiate 1.6s ease-out infinite;
+}
+
+.task-alarm-active::after {
+  border-color: #f97316;
+  animation-delay: 0.8s;
+}
+
+/* Small radiating beacon beside the "ALARM" label: a solid dot with two
+   rings that grow outward and fade, half a cycle apart. */
+@keyframes task-alarm-ring {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(3); opacity: 0; }
+}
+
+@keyframes task-alarm-dot {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+}
+
+.task-alarm-beacon {
+  position: relative;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background-color: #dc2626;
+  flex-shrink: 0;
+  animation: task-alarm-dot 1.6s ease-in-out infinite;
+}
+
+.task-alarm-beacon::before,
+.task-alarm-beacon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid #f97316;
+  animation: task-alarm-ring 1.6s ease-out infinite;
+}
+
+.task-alarm-beacon::after {
+  border-color: #dc2626;
+  animation-delay: 0.8s;
+}
+
+/* Step 6J — the same alarm treatment adapted to smaller surfaces.
+   .task-alarm-compact: a calendar event (tighter rings, smaller corners).
+   .task-alarm-row: a table row. A <tr> cannot host the scaling card or its
+   ring pseudo-elements, so each cell breathes the same orange/red colours in
+   step, with a pulsing red edge, on the same 1.6s cycle — without changing the
+   row's height. */
+.task-alarm-compact {
+  border-width: 1px;
+}
+.task-alarm-compact::before,
+.task-alarm-compact::after {
+  border-radius: 6px;
+  border-width: 2px;
+}
+
+.task-alarm-beacon-sm {
+  width: 7px;
+  height: 7px;
+}
+
+/* Step 6K: the row's cells pulse a TRANSLUCENT orange over the row's own
+   category tint (set on the <tr>), so the task keeps its Board identity
+   color while the red borders/glow/edge carry the alarm. */
+@keyframes task-alarm-row-breathe {
+  0%, 100% {
+    background-color: rgba(249, 115, 22, 0.04);
+    box-shadow: inset 0 2px 0 rgba(220, 38, 38, 0.55), inset 0 -2px 0 rgba(220, 38, 38, 0.55);
+  }
+  50% {
+    background-color: rgba(249, 115, 22, 0.13);
+    box-shadow: inset 0 2px 0 #f97316, inset 0 -2px 0 #f97316;
+  }
+}
+
+@keyframes task-alarm-row-edge {
+  0%, 100% { box-shadow: inset 4px 0 0 #dc2626, inset 0 2px 0 rgba(220, 38, 38, 0.55), inset 0 -2px 0 rgba(220, 38, 38, 0.55); }
+  50% { box-shadow: inset 7px 0 0 #f97316, inset 0 2px 0 #f97316, inset 0 -2px 0 #f97316; }
+}
+
+.task-alarm-row > td {
+  background-color: rgba(249, 115, 22, 0.04);
+  animation: task-alarm-row-breathe 1.6s ease-in-out infinite;
+}
+.task-alarm-row > td:first-child {
+  animation: task-alarm-row-breathe 1.6s ease-in-out infinite, task-alarm-row-edge 1.6s ease-in-out infinite;
+}
+.task-alarm-row:hover > td {
+  background-color: rgba(249, 115, 22, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-alarm-active {
+    animation: none;
+    border-color: #dc2626;
+    background-color: #ffe0c2;
+    box-shadow:
+      0 0 0 3px rgba(220, 38, 38, 0.55),
+      0 0 12px 3px rgba(249, 115, 22, 0.5),
+      inset 0 0 14px 1px rgba(239, 68, 68, 0.3);
+  }
+  .task-alarm-active::before,
+  .task-alarm-active::after {
+    animation: none;
+    opacity: 0;
+  }
+  .task-alarm-beacon,
+  .task-alarm-beacon::before,
+  .task-alarm-beacon::after {
+    animation: none;
+  }
+  .task-alarm-row > td,
+  .task-alarm-row > td:first-child {
+    animation: none;
+    background-color: rgba(249, 115, 22, 0.16);
+    box-shadow: inset 0 2px 0 #dc2626, inset 0 -2px 0 #dc2626;
+  }
+  .task-alarm-row > td:first-child {
+    box-shadow: inset 5px 0 0 #dc2626, inset 0 2px 0 #dc2626, inset 0 -2px 0 #dc2626;
+  }
+  .task-alarm-beacon::before,
+  .task-alarm-beacon::after {
+    opacity: 0;
+  }
+}
+
+/* ===== Supermarket platform additions ===== */
+@keyframes new-order-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.35); }
+}
+.new-order-flash { animation: new-order-flash 1.2s ease-in-out infinite; border-color: #dc2626 !important; }
+@keyframes rider-pulse { 0% { transform: scale(1); opacity: .8 } 100% { transform: scale(2.6); opacity: 0 } }
+.rider-pulse { animation: rider-pulse 1.6s ease-out infinite; }
+@media print { aside, header, .no-print { display: none !important; } main { margin: 0 !important; padding: 0 !important; } }
