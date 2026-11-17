@@ -77,7 +77,7 @@ export default function BranchesPage() {
       x.services[key] = next;
       addAudit(d, { module: 'Branches', action: 'Service switch', detail: `${b.name}: ${SERVICES.find((v) => v.key === key)!.label} turned ${next ? 'on' : 'off'}`, branchId: b.id, oldValue: next ? 'off' : 'on', newValue: next ? 'on' : 'off' });
     });
-    toast.success(`${SERVICES.find((v) => v.key === key)!.label} ${next ? 'enabled' : 'disabled'} at ${b.name}`, { description: 'Shopper app updates instantly.' });
+    toast.success(`${SERVICES.find((v) => v.key === key)!.label} ${next ? 'enabled' : 'disabled'} at ${b.name}`, { description: 'Customer App updates instantly.' });
   };
 
   const setCityStatus = (c: City, status: City['status']) => {
@@ -105,7 +105,7 @@ export default function BranchesPage() {
 
         <Tip>
           <Sparkles className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.75} />
-          <span><b>No code change needed to expand.</b> Opening a new branch (or a whole new city, e.g. Chain C) is done here: add it, clone settings from an existing branch, and it appears in the Shopper App, Order Desk and Rider App immediately.</span>
+          <span><b>One branch today (Digos City). No code change needed to grow.</b> A second branch is added here: add it, clone the Digos settings and delivery zones, and it appears in the Customer App, Order Desk and Rider App immediately (within the plan limit set by the Platform Owner).</span>
         </Tip>
 
         {/* Cities */}
@@ -133,7 +133,7 @@ export default function BranchesPage() {
                     <TableCell className="pl-5 font-medium text-gray-900">{c.name}</TableCell>
                     <TableCell className="text-gray-600">{c.region}</TableCell>
                     <TableCell>{bs.length}</TableCell>
-                    <TableCell className="font-semibold text-[#1e40af]">{bs.reduce((a, b) => a + (metrics[b.id]?.today ?? 0), 0)}</TableCell>
+                    <TableCell className="font-semibold text-[#c8151d]">{bs.reduce((a, b) => a + (metrics[b.id]?.today ?? 0), 0)}</TableCell>
                     <TableCell><EntityStatus status={c.status} /></TableCell>
                     <TableCell className="text-right pr-5">
                       {editable && (
@@ -155,7 +155,7 @@ export default function BranchesPage() {
         {/* Branches */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">Branches</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select className={selectClass} value={cityFilter} onChange={(e) => setCityFilter(e.target.value)}>
               <option value="all">All cities</option>
               {s.cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -179,15 +179,15 @@ export default function BranchesPage() {
                 {bs.map((b) => {
                   const m = metrics[b.id];
                   return (
-                    <div key={b.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
+                    <div key={b.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5 flex flex-col gap-4 hover:shadow-md transition-shadow min-w-0">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-mono font-semibold bg-[#1e40af]/10 text-[#1e40af] rounded px-1.5 py-0.5">{b.code}</span>
+                            <span className="text-[11px] font-mono font-semibold bg-[#c8151d]/10 text-[#c8151d] rounded px-1.5 py-0.5">{b.code}</span>
                             <h3 className="font-semibold text-gray-900 truncate">{b.name}</h3>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><MapPin className="w-3 h-3" strokeWidth={1.75} />{b.address}</p>
-                          <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-3">
+                          <p className="text-xs text-gray-500 mt-1 flex items-start gap-1"><MapPin className="w-3 h-3 mt-0.5 shrink-0" strokeWidth={1.75} />{b.address}</p>
+                          <p className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
                             <span className="flex items-center gap-1"><Phone className="w-3 h-3" strokeWidth={1.75} />{b.phone}</span>
                             <span className="flex items-center gap-1"><Clock className="w-3 h-3" strokeWidth={1.75} />{b.hours}</span>
                           </p>
@@ -195,12 +195,12 @@ export default function BranchesPage() {
                         <EntityStatus status={b.status} />
                       </div>
                       {b.status === 'paused' && b.pausedMessage && (
-                        <p className="text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2">Shoppers see: “{b.pausedMessage}”</p>
+                        <p className="text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2">Customers see: “{b.pausedMessage}”</p>
                       )}
                       <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="rounded-lg bg-gray-50 py-2"><p className="text-lg font-bold text-[#1e40af]">{m?.today ?? 0}</p><p className="text-[11px] text-gray-500">Orders today</p></div>
-                        <div className="rounded-lg bg-gray-50 py-2"><p className="text-lg font-bold text-[#1e40af]">{staffForBranch(s, b).length}</p><p className="text-[11px] text-gray-500">Staff</p></div>
-                        <div className="rounded-lg bg-gray-50 py-2"><p className="text-lg font-bold text-[#1e40af]">{s.riders.filter((r) => r.branchIds.includes(b.id)).length}</p><p className="text-[11px] text-gray-500">Riders</p></div>
+                        <div className="rounded-lg bg-gray-50 py-2"><p className="text-lg font-bold text-[#c8151d]">{m?.today ?? 0}</p><p className="text-[11px] text-gray-500">Orders today</p></div>
+                        <div className="rounded-lg bg-gray-50 py-2"><p className="text-lg font-bold text-[#c8151d]">{staffForBranch(s, b).length}</p><p className="text-[11px] text-gray-500">Staff</p></div>
+                        <div className="rounded-lg bg-gray-50 py-2"><p className="text-lg font-bold text-[#c8151d]">{s.riders.filter((r) => r.branchIds.includes(b.id)).length}</p><p className="text-[11px] text-gray-500">Riders</p></div>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-2">
                         {SERVICES.map((sv) => (
@@ -210,7 +210,7 @@ export default function BranchesPage() {
                           </label>
                         ))}
                       </div>
-                      <div className="flex gap-2 pt-1 border-t border-gray-100 -mx-5 px-5 pt-3 mt-auto">
+                      <div className="flex flex-wrap gap-2 border-t border-gray-100 -mx-4 sm:-mx-5 px-4 sm:px-5 pt-3 mt-auto">
                         <Button size="sm" variant="outline" onClick={() => setDetail(b.id)}>Details</Button>
                         {editable && <Button size="sm" variant="ghost" onClick={() => setBranchDlg(b)}><Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />Edit</Button>}
                         <Button size="sm" variant="ghost" asChild><Link href="/admin/settings"><Settings className="w-3.5 h-3.5" strokeWidth={1.75} />Settings</Link></Button>
@@ -248,12 +248,12 @@ function ComparisonPanel({ metrics }: { metrics: Record<string, ReturnType<typeo
   ];
   return (
     <Panel
-      title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />Branch comparison</h2>}
+      title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />Branch comparison</h2>}
       action={
         <div className="flex flex-wrap gap-1">
           {s.branches.map((b) => (
             <button key={b.id} onClick={() => setIds((x) => (x.includes(b.id) ? x.filter((y) => y !== b.id) : [...x, b.id]))}
-              className={cn('text-xs rounded-full px-2.5 py-1 border transition-colors', ids.includes(b.id) ? 'bg-[#1e40af] text-white border-[#1e40af]' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50')}>
+              className={cn('text-xs rounded-full px-2.5 py-1 border transition-colors', ids.includes(b.id) ? 'bg-[#c8151d] text-white border-[#c8151d]' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50')}>
               {b.name}
             </button>
           ))}
@@ -284,7 +284,7 @@ function ComparisonPanel({ metrics }: { metrics: Record<string, ReturnType<typeo
                         <span className={cn('font-semibold', vals[i] === best ? 'text-emerald-700' : 'text-gray-900')}>
                           {r.fmt(vals[i])}{vals[i] === best && bs.length > 1 && <span className="ml-1 text-[10px] font-medium text-emerald-600">best</span>}
                         </span>
-                        <div className="h-1.5 rounded-full bg-gray-100"><div className="h-1.5 rounded-full bg-[#1e40af]/70" style={{ width: `${(vals[i] / max) * 100}%` }} /></div>
+                        <div className="h-1.5 rounded-full bg-gray-100"><div className="h-1.5 rounded-full bg-[#c8151d]/70" style={{ width: `${(vals[i] / max) * 100}%` }} /></div>
                       </div>
                     </TableCell>
                   ))}
@@ -355,7 +355,7 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
     phone: branch?.phone ?? '', email: branch?.email ?? '', hours: branch?.hours ?? '8:00 AM – 9:00 PM',
     status: branch?.status ?? 'active', pausedMessage: branch?.pausedMessage ?? '',
     pickupInstructions: branch?.pickupInstructions ?? 'Pickup counter near the entrance',
-    services: branch?.services ?? { delivery: true, pickup: true, walkIn: true, phone: true, picker: true },
+    services: branch?.services ?? { delivery: true, pickup: true, walkIn: false, phone: false, picker: true },
   });
   const [cloneFrom, setCloneFrom] = useState('');
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
@@ -413,13 +413,13 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{branch ? `Edit ${branch.name}` : 'Add branch'}</DialogTitle>
-          <DialogDescription>{branch ? 'Changes apply immediately in every app.' : 'A new branch goes live in the Shopper App, Order Desk and Rider App without any code change.'}</DialogDescription>
+          <DialogDescription>{branch ? 'Changes apply immediately in every app.' : 'A new branch goes live in the Customer App, Order Desk and Rider App without any code change.'}</DialogDescription>
         </DialogHeader>
         {!branch && (
-          <div className="rounded-lg border border-[#1e40af]/20 bg-[#1e40af]/5 p-3">
+          <div className="rounded-lg border border-[#c8151d]/20 bg-[#c8151d]/5 p-3">
             <Field label="Clone settings from branch (optional)" hint="Copies that branch's setting overrides and delivery zones to the new branch. You can adjust them afterwards.">
               <select className={selectClass} value={cloneFrom} onChange={(e) => setCloneFrom(e.target.value)}>
                 <option value="">Start from global defaults</option>
@@ -429,8 +429,8 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
           </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Branch name"><input className={inputClass} value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Bajada" /></Field>
-          <Field label="Code (order prefix)"><input className={cn(inputClass, 'uppercase font-mono')} maxLength={4} value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="BJD" /></Field>
+          <Field label="Branch name"><input className={inputClass} value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Bansalan" /></Field>
+          <Field label="Code (order prefix)"><input className={cn(inputClass, 'uppercase font-mono')} maxLength={4} value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="BSL" /></Field>
           <Field label="City">
             <select className={selectClass} value={f.cityId} onChange={(e) => set('cityId', e.target.value)}>
               {s.cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -438,10 +438,10 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
           </Field>
           <Field label="Opening hours"><input className={inputClass} value={f.hours} onChange={(e) => set('hours', e.target.value)} /></Field>
           <Field label="Address" className="sm:col-span-2"><input className={inputClass} value={f.address} onChange={(e) => set('address', e.target.value)} placeholder="Street, barangay, city" /></Field>
-          <Field label="Latitude" hint="Leave blank to use the city centre"><input className={inputClass} value={f.lat} onChange={(e) => set('lat', e.target.value)} placeholder="7.0731" /></Field>
-          <Field label="Longitude"><input className={inputClass} value={f.lng} onChange={(e) => set('lng', e.target.value)} placeholder="125.6128" /></Field>
-          <Field label="Phone"><input className={inputClass} value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(082) 297-1004" /></Field>
-          <Field label="Email"><input className={inputClass} value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="bajada@freshmart.ph" /></Field>
+          <Field label="Latitude" hint="Leave blank to use the city centre"><input className={inputClass} value={f.lat} onChange={(e) => set('lat', e.target.value)} placeholder="6.7497" /></Field>
+          <Field label="Longitude"><input className={inputClass} value={f.lng} onChange={(e) => set('lng', e.target.value)} placeholder="125.3572" /></Field>
+          <Field label="Phone"><input className={inputClass} value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(082) 553-1002" /></Field>
+          <Field label="Email"><input className={inputClass} value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="bansalan@jovannesmeatshop.ph" /></Field>
           <Field label="Pickup instructions" className="sm:col-span-2"><input className={inputClass} value={f.pickupInstructions} onChange={(e) => set('pickupInstructions', e.target.value)} /></Field>
           <Field label="Status">
             <select className={selectClass} value={f.status} onChange={(e) => set('status', e.target.value as Branch['status'])}>
@@ -449,7 +449,7 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
             </select>
           </Field>
           {f.status === 'paused' && (
-            <Field label="Message to shoppers"><input className={inputClass} value={f.pausedMessage} onChange={(e) => set('pausedMessage', e.target.value)} placeholder="Back tomorrow at 8 AM" /></Field>
+            <Field label="Message to customers"><input className={inputClass} value={f.pausedMessage} onChange={(e) => set('pausedMessage', e.target.value)} placeholder="Back tomorrow at 8 AM" /></Field>
           )}
         </div>
         <div>
@@ -478,22 +478,22 @@ function BranchDetail({ branch: b, metrics: m, onClose }: { branch: Branch; metr
   const overrides = s.settings.filter((x) => x.branch[b.id] !== undefined);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <span className="text-[11px] font-mono font-semibold bg-[#1e40af]/10 text-[#1e40af] rounded px-1.5 py-0.5">{b.code}</span>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-mono font-semibold bg-[#c8151d]/10 text-[#c8151d] rounded px-1.5 py-0.5">{b.code}</span>
             {b.name} <EntityStatus status={b.status} />
           </DialogTitle>
           <DialogDescription>{b.address} · {cityName(s, b.cityId)}</DialogDescription>
         </DialogHeader>
-        <MapView center={[b.lat, b.lng]} zoom={15} className="h-56 rounded-lg overflow-hidden" markers={[{ id: b.id, lat: b.lat, lng: b.lng, label: '🏪', color: '#1e40af', title: b.name }]} />
+        <MapView center={[b.lat, b.lng]} zoom={15} className="h-56 rounded-lg overflow-hidden" markers={[{ id: b.id, lat: b.lat, lng: b.lng, label: '🏪', color: '#c8151d', title: b.name }]} />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-          <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Orders today</p><p className="font-bold text-[#1e40af] text-lg">{m?.today ?? 0}</p></div>
-          <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Avg basket</p><p className="font-bold text-[#1e40af] text-lg">{pesoShort(m?.avg ?? 0)}</p></div>
-          <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Fulfilment</p><p className="font-bold text-[#1e40af] text-lg">{m?.speed ? `${Math.round(m.speed)} min` : '—'}</p></div>
-          <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Stock health</p><p className="font-bold text-[#1e40af] text-lg">{m?.stock ?? 0}%</p></div>
+          <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Orders today</p><p className="font-bold text-[#c8151d] text-lg">{m?.today ?? 0}</p></div>
+          <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Avg basket</p><p className="font-bold text-[#c8151d] text-lg">{pesoShort(m?.avg ?? 0)}</p></div>
+          <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Fulfilment</p><p className="font-bold text-[#c8151d] text-lg">{m?.speed ? `${Math.round(m.speed)} min` : '—'}</p></div>
+          <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Stock health</p><p className="font-bold text-[#c8151d] text-lg">{m?.stock ?? 0}%</p></div>
         </div>
-        <div className="grid sm:grid-cols-2 gap-4 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div className="space-y-1.5">
             <p className="flex items-center gap-2 text-gray-700"><Phone className="w-4 h-4 text-gray-400" strokeWidth={1.75} />{b.phone}</p>
             <p className="flex items-center gap-2 text-gray-700"><Mail className="w-4 h-4 text-gray-400" strokeWidth={1.75} />{b.email}</p>

@@ -58,7 +58,7 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 export const STATUS_CLASS: Record<OrderStatus, string> = {
   placed: 'bg-gray-100 text-gray-700',
   awaiting_confirmation: 'bg-red-100 text-red-700',
-  confirmed: 'bg-blue-100 text-blue-800',
+  confirmed: 'bg-red-100 text-red-800',
   preparing: 'bg-purple-100 text-purple-800',
   awaiting_shopper: 'bg-amber-100 text-amber-800',
   ready: 'bg-cyan-100 text-cyan-800',

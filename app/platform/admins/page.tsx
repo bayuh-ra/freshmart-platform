@@ -49,7 +49,7 @@ export default function ClientAdminsPage() {
             return (
               <li key={u.id} className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className={cn('w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0', suspended ? 'bg-gray-400' : 'bg-[#1e40af]')}>
+                  <div className={cn('w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0', suspended ? 'bg-gray-400' : 'bg-[#c8151d]')}>
                     {u.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
                   </div>
                   <div className="min-w-0">
@@ -63,7 +63,7 @@ export default function ClientAdminsPage() {
                 </div>
                 <div className="flex gap-2">
                   {suspended ? (
-                    <button onClick={() => setStatus(u, 'active')} className="h-9 px-4 rounded-lg bg-[#0f172a] text-white text-sm font-medium hover:bg-[#1e293b]">Reactivate</button>
+                    <button onClick={() => setStatus(u, 'active')} className="h-9 px-4 rounded-lg bg-[#2a2322] text-white text-sm font-medium hover:bg-[#3d3432]">Reactivate</button>
                   ) : (
                     <button onClick={() => setStatus(u, 'suspended')} className="h-9 px-4 rounded-lg border border-[#dc2626] text-[#dc2626] text-sm font-medium hover:bg-red-50">Suspend</button>
                   )}

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Bell, RotateCcw, Store, ChevronDown, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
-import { Sidebar, SIDEBAR_COLLAPSED_WIDTH } from './Sidebar';
+import { MobileNav, Sidebar } from './Sidebar';
 import { ClientGate } from '@/src/components/platform/Gates';
 import { mutate, resetDemo, useStore } from '@/src/lib/store';
 import { currentRole, currentUser, timeAgo, userBranchIds, playAlert } from '@/src/lib/logic';
@@ -27,8 +27,9 @@ export function DashboardLayout({ title, eyebrow, children, hideBranch }: Props)
       <Sidebar />
       <Navbar title={title} eyebrow={eyebrow} hideBranch={hideBranch} />
       <NewOrderWatcher />
-      <main style={{ marginLeft: SIDEBAR_COLLAPSED_WIDTH }} className="pt-16 min-h-screen">
-        <div className="p-6 md:p-8"><ClientGate>{children}</ClientGate></div>
+      {/* md+: offset by the 68px icon rail. Phones: no rail (drawer instead), full width. */}
+      <main className="pt-14 md:pt-16 md:ml-[68px] min-h-screen min-w-0 overflow-x-clip">
+        <div className="p-4 sm:p-6 md:p-8"><ClientGate>{children}</ClientGate></div>
       </main>
     </div>
   );
@@ -76,19 +77,22 @@ function Navbar({ title, eyebrow, hideBranch }: { title: string; eyebrow?: strin
   }, [branchIds, s.session.branchId]);
 
   return (
-    <header style={{ left: SIDEBAR_COLLAPSED_WIDTH }}
-      className="fixed top-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-[rgba(15,15,26,0.08)] flex items-center justify-between px-6 z-20">
-      <div className="min-w-0">
-        {eyebrow && <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#a3a6b8] leading-none mb-0.5">{eyebrow}</p>}
-        <h1 className="text-lg font-bold text-[#0f0f1a] leading-tight truncate" style={{ fontFamily: 'var(--font-ibm-plex-sans)' }}>{title}</h1>
+    <header
+      className="fixed top-0 right-0 left-0 md:left-[68px] h-14 md:h-16 bg-white/80 backdrop-blur-md border-b border-[rgba(15,15,26,0.08)] flex items-center justify-between gap-2 px-3 sm:px-4 md:px-6 z-20">
+      <div className="flex items-center gap-2 min-w-0">
+        <MobileNav />
+        <div className="min-w-0">
+          {eyebrow && <p className="hidden sm:block text-[10px] font-bold uppercase tracking-[0.08em] text-[#a3a6b8] leading-none mb-0.5">{eyebrow}</p>}
+          <h1 className="text-base md:text-lg font-bold text-[#0f0f1a] leading-tight truncate" style={{ fontFamily: 'var(--font-oswald)' }}>{title}</h1>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         {!hideBranch && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border border-[rgba(15,15,26,0.1)] bg-black/[0.02] hover:bg-black/[0.04] text-sm text-[#0f0f1a]">
-                <Store className="w-4 h-4 text-[#1e40af]" />
+                <Store className="w-4 h-4 text-[#c8151d]" />
                 <span className="font-medium">{branch?.name ?? 'Branch'}</span>
                 {branch?.status === 'paused' && <span className="text-[10px] font-bold text-amber-600">PAUSED</span>}
                 <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
@@ -106,7 +110,7 @@ function Navbar({ title, eyebrow, hideBranch }: { title: string; eyebrow?: strin
                       <DropdownMenuItem key={b.id} onClick={() => mutate((d) => { d.session.branchId = b.id; })}>
                         <span className="flex-1">{b.name}</span>
                         {b.status !== 'active' && <span className="text-[10px] text-amber-600 uppercase">{b.status}</span>}
-                        {b.id === s.session.branchId && <span className="text-[#1e40af]">●</span>}
+                        {b.id === s.session.branchId && <span className="text-[#c8151d]">●</span>}
                       </DropdownMenuItem>
                     ))}
                   </div>
@@ -125,7 +129,7 @@ function Navbar({ title, eyebrow, hideBranch }: { title: string; eyebrow?: strin
             )}
           </button>
           {open && (
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50">
+            <div className="fixed left-2 right-2 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50">
               <div className="px-4 py-3 border-b border-gray-100 font-semibold text-sm">Notifications</div>
               <div className="max-h-80 overflow-y-auto">
                 {staffNotifs.length === 0 && <p className="text-sm text-gray-400 p-6 text-center">No notifications yet.</p>}
@@ -143,17 +147,17 @@ function Navbar({ title, eyebrow, hideBranch }: { title: string; eyebrow?: strin
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-black/5 transition-colors outline-none">
+            <button className="flex items-center gap-3 rounded-lg px-1 sm:px-2 py-1.5 hover:bg-black/5 transition-colors outline-none" aria-label="User menu">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-[#0f0f1a] leading-tight">{user.name}</p>
                 <p className="text-xs text-gray-500 leading-tight">{role.name}</p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-[#1e40af] text-white flex items-center justify-center text-sm font-bold">
+              <div className="w-9 h-9 rounded-full bg-[#c8151d] text-white flex items-center justify-center text-sm font-bold">
                 {user.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72">
+          <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-1rem)]">
             <DropdownMenuLabel>View as (RBAC demo)</DropdownMenuLabel>
             {s.staff.filter((u) => u.status === 'active' || u.status === 'suspended').map((u) => (
               <DropdownMenuItem key={u.id} onClick={() => { mutate((d) => { d.session.staffUserId = u.id; }); toast.success(`Now viewing as ${u.name}`, { description: s.roles.find((r) => r.id === u.roleId)?.name }); }}>
@@ -161,7 +165,7 @@ function Navbar({ title, eyebrow, hideBranch }: { title: string; eyebrow?: strin
                   <p className="text-sm">{u.name}</p>
                   <p className="text-xs text-gray-500">{s.roles.find((r) => r.id === u.roleId)?.name}{u.status === 'suspended' ? ' · suspended' : ''}</p>
                 </div>
-                {u.id === user.id && <span className="text-[#1e40af]">●</span>}
+                {u.id === user.id && <span className="text-[#c8151d]">●</span>}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
@@ -169,7 +173,7 @@ function Navbar({ title, eyebrow, hideBranch }: { title: string; eyebrow?: strin
               <RotateCcw className="w-4 h-4" /> Reset demo data
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/login"><LogOut className="w-4 h-4" /> Sign out</Link>
+              <Link href="/staff"><LogOut className="w-4 h-4" /> Sign out</Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

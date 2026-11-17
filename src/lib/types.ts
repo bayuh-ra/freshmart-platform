@@ -33,6 +33,8 @@ export interface Category {
   parentId?: ID;
   icon: string; // emoji
   sort: number;
+  /** Optional photo URL for category tiles (falls back to the emoji). */
+  photo?: string;
 }
 
 export type UnitOfMeasure = 'pc' | 'pack' | 'kg' | 'g' | 'L';
@@ -48,7 +50,8 @@ export interface Product {
   unit: UnitOfMeasure;
   size: string; // "1 L", "500 g"
   description: string;
-  image: string; // emoji used as product photo in the demo
+  /** Product photo URL ("/images/…" or an uploaded data: URL) — or an emoji when there is no photo. */
+  image: string;
   basePrice: number; // per unit (per kg when soldByWeight)
   compareAt?: number;
   costPrice: number;
@@ -446,6 +449,8 @@ export interface Banner {
   emoji: string;
   active: boolean;
   cityId?: ID;
+  /** Optional background photo URL. */
+  photo?: string;
 }
 
 export interface Session {

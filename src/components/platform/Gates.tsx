@@ -16,7 +16,7 @@ export function ModuleOff({ moduleKey }: { moduleKey: ModuleKey }) {
       <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center mb-3"><Power className="w-6 h-6" /></div>
       <h2 className="text-lg font-semibold text-gray-900">{m.label} is switched off</h2>
       <p className="text-sm text-gray-500 mt-1">This module is not part of your plan. It was switched off by the Platform Owner (LAP IT Solutions). Contact LAP IT Solutions to turn it on.</p>
-      <Link href="/dashboard" className="mt-5 text-sm font-medium text-[#1e40af] hover:underline">Back to Dashboard</Link>
+      <Link href="/dashboard" className="mt-5 text-sm font-medium text-[#c8151d] hover:underline">Back to Dashboard</Link>
     </div>
   );
 }
@@ -48,7 +48,7 @@ export function ClientGate({ children }: { children: React.ReactNode }) {
         <h2 className="text-lg font-semibold text-gray-900">You were signed out</h2>
         <p className="text-sm text-gray-500 mt-1">The Platform Owner signed {user.name} out of all devices. Sign in again to continue.</p>
         <button onClick={() => mutate((d) => { d.platform.forcedSignOut = d.platform.forcedSignOut.filter((id) => id !== user.id); })}
-          className="mt-5 h-9 px-4 rounded-lg bg-[#1e40af] text-white text-sm font-medium hover:bg-[#1e3a8a]">Sign in again</button>
+          className="mt-5 h-9 px-4 rounded-lg bg-[#c8151d] text-white text-sm font-medium hover:bg-[#a3111a]">Sign in again</button>
       </div>
     );
   }

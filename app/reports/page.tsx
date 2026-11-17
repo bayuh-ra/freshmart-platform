@@ -21,8 +21,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
   BLUE, CHART_COLORS, DAY, avg, dayKey, dayLabel, groupBy, isSale, itemQty, lineTotal, netSales, startOfDay, stepMinutes, sum,
 } from '@/src/components/reports/analytics';
-import { Delta, ExportButtons, KpiCard, ShareBar } from '@/src/components/reports/ui';
+import { Delta, ExportButtons, KpiCard, ShareBar, useNow } from '@/src/components/reports/ui';
 import { cn } from '@/src/lib/utils';
+import { ProductImage } from '@/src/components/ProductImage';
 
 type Range = 1 | 7 | 14;
 const RANGE_LABEL: Record<Range, string> = { 1: 'Today', 7: 'Last 7 days', 14: 'Last 14 days' };
@@ -64,24 +65,26 @@ export default function ReportsPage() {
   return (
     <DashboardLayout title="Reports" eyebrow="Analytics" hideBranch>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Reports</h1>
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Reports</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {RANGE_LABEL[range]} · {branch === 'all' ? `${allowed.length} branches in your scope` : branchName(s, branch)} · compared with the previous {range === 1 ? 'day' : `${range} days`}
+            {RANGE_LABEL[range]} · {branch === 'all' ? (allowed.length === 1 ? `${branchName(s, allowed[0])} branch` : `${allowed.length} branches in your scope`) : branchName(s, branch)} · compared with the previous {range === 1 ? 'day' : `${range} days`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
             {([1, 7, 14] as Range[]).map((r) => (
-              <button key={r} onClick={() => setRange(r)} className={cn('px-3 py-1.5 text-sm rounded-md font-medium', range === r ? 'bg-[#1e40af] text-white' : 'text-gray-600 hover:bg-gray-50')}>
+              <button key={r} onClick={() => setRange(r)} className={cn('px-3 py-1.5 text-sm rounded-md font-medium', range === r ? 'bg-[#c8151d] text-white' : 'text-gray-600 hover:bg-gray-50')}>
                 {RANGE_LABEL[r]}
               </button>
             ))}
           </div>
-          <select className={selectClass} value={branch} onChange={(e) => setBranch(e.target.value)}>
-            <option value="all">All my branches</option>
-            {allowed.map((id) => <option key={id} value={id}>{branchName(s, id)}</option>)}
-          </select>
+          {allowed.length > 1 && (
+            <select className={selectClass} value={branch} onChange={(e) => setBranch(e.target.value)}>
+              <option value="all">All my branches</option>
+              {allowed.map((id) => <option key={id} value={id}>{branchName(s, id)}</option>)}
+            </select>
+          )}
           <Button variant="outline" onClick={() => setScheduleOpen(true)}>
             <CalendarClock className="w-4 h-4" strokeWidth={1.75} /> Schedule report
           </Button>
@@ -89,7 +92,7 @@ export default function ReportsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-4 print:hidden">
+        <TabsList className="mb-4 print:hidden max-w-full overflow-x-auto overflow-y-hidden justify-start">
           <TabsTrigger value="sales">Sales</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="customers">Customers</TabsTrigger>
@@ -129,7 +132,29 @@ function SalesTab({ ctx }: { ctx: Ctx }) {
   };
   const byBranch = breakdown((o) => o.branchId, (k) => branchName(s, k));
   const byCity = breakdown((o) => s.branches.find((b) => b.id === o.branchId)?.cityId ?? '', (k) => cityName(s, k));
-  const byChannel = breakdown((o) => o.channel, (k) => CHANNEL_LABEL[k as Order['channel']]);
+  const multiBranch = s.branches.length > 1;
+  // Meat shop: sales by product category (Beef, Pork, Chicken…) from the order lines.
+  const catName = (pid: string) => {
+    const p = s.products.find((x) => x.id === pid);
+    let c = s.categories.find((x) => x.id === p?.categoryId);
+    while (c?.parentId) c = s.categories.find((x) => x.id === c!.parentId) ?? undefined;
+    return c ? `${c.icon} ${c.name}` : 'Other';
+  };
+  const catTotals = (list: Order[]) => {
+    const m = new Map<string, { sales: number; orders: Set<string> }>();
+    for (const o of list) for (const i of o.items) {
+      if (i.pickStatus === 'removed' || i.pickStatus === 'out_of_stock') continue;
+      const k = catName(i.productId);
+      const e = m.get(k) ?? { sales: 0, orders: new Set<string>() };
+      e.sales += lineTotal(i);
+      e.orders.add(o.id);
+      m.set(k, e);
+    }
+    return m;
+  };
+  const curCats = catTotals(sales);
+  const prevCats = catTotals(prevSales);
+  const byCategory = [...curCats].map(([k, e]) => ({ key: k, name: k, sales: e.sales, orders: e.orders.size, prev: prevCats.get(k)?.sales ?? 0 })).sort((a, b) => b.sales - a.sales);
   const byFul = breakdown((o) => o.fulfillment, (k) => (k === 'delivery' ? 'Delivery' : 'Pickup'));
   const byPay = breakdown((o) => o.paymentMethod, (k) => PAYMENT_LABEL[k as Order['paymentMethod']]);
 
@@ -137,7 +162,7 @@ function SalesTab({ ctx }: { ctx: Ctx }) {
 
   const csv = () => {
     const rows: (string | number)[][] = [['Sales report', RANGE_LABEL[ctx.range]], [], ['Day', 'Net sales', 'Orders'], ...trend.map((t) => [t.day, t.sales, t.orders]), []];
-    for (const [title, list] of [['Branch', byBranch], ['City', byCity], ['Channel', byChannel], ['Fulfillment', byFul], ['Payment method', byPay]] as const) {
+    for (const [title, list] of [...(multiBranch ? [['Branch', byBranch], ['City', byCity]] as const : []), ['Category', byCategory], ['Fulfillment', byFul], ['Payment method', byPay]] as const) {
       rows.push([title, 'Net sales', 'Orders', 'Previous period', 'Change %']);
       list.forEach((r) => rows.push([r.name, r.sales.toFixed(2), r.orders, r.prev.toFixed(2), r.prev ? (((r.sales - r.prev) / r.prev) * 100).toFixed(1) : '']));
       rows.push([]);
@@ -173,17 +198,17 @@ function SalesTab({ ctx }: { ctx: Ctx }) {
         </div>
       </Panel>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <BreakdownPanel title="By branch (click to drill down)" rows={byBranch} onRowClick={(k) => setDrill(drill === k ? null : k)} activeKey={drill} />
-        <BreakdownPanel title="By city" rows={byCity} />
-        <BreakdownPanel title="By channel" rows={byChannel} />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
+        {multiBranch && <BreakdownPanel title="By branch (click to drill down)" rows={byBranch} onRowClick={(k) => setDrill(drill === k ? null : k)} activeKey={drill} />}
+        {multiBranch && <BreakdownPanel title="By city" rows={byCity} />}
+        <BreakdownPanel title="By category" rows={byCategory} />
         <BreakdownPanel title="By fulfillment" rows={byFul} />
         <BreakdownPanel title="By payment method" rows={byPay} className="xl:col-span-2" />
       </div>
 
       <Panel
         title={drill ? `Orders · ${branchName(s, drill)}` : 'Orders in period'}
-        action={drill ? <Button variant="ghost" size="sm" onClick={() => setDrill(null)}><X className="w-4 h-4" /> Clear branch filter</Button> : <span className="text-xs text-gray-400">Click a branch row above to filter</span>}
+        action={drill ? <Button variant="ghost" size="sm" onClick={() => setDrill(null)}><X className="w-4 h-4" /> Clear branch filter</Button> : (multiBranch ? <span className="text-xs text-gray-400">Click a branch row above to filter</span> : undefined)}
         bodyClass="p-0"
       >
         <OrdersTable orders={drillOrders.slice(0, 60)} s={s} />
@@ -214,10 +239,10 @@ function BreakdownPanel({ title, rows, onRowClick, activeKey, className }: {
           {rows.map((r) => {
             const ch = r.prev ? ((r.sales - r.prev) / r.prev) * 100 : null;
             return (
-              <TableRow key={r.key} onClick={onRowClick ? () => onRowClick(r.key) : undefined} className={cn(onRowClick && 'cursor-pointer', activeKey === r.key && 'bg-blue-50/70')}>
+              <TableRow key={r.key} onClick={onRowClick ? () => onRowClick(r.key) : undefined} className={cn(onRowClick && 'cursor-pointer', activeKey === r.key && 'bg-red-50/70')}>
                 <TableCell className="pl-5 font-medium text-gray-900">{r.name}</TableCell>
                 <TableCell><div className="flex items-center gap-2"><ShareBar value={r.sales} max={max} /><span className="text-xs text-gray-400 w-9 text-right">{total ? Math.round((r.sales / total) * 100) : 0}%</span></div></TableCell>
-                <TableCell className="text-right font-semibold text-[#1e40af]">{pesoShort(r.sales)}</TableCell>
+                <TableCell className="text-right font-semibold text-[#c8151d]">{pesoShort(r.sales)}</TableCell>
                 <TableCell className="text-right">{r.orders}</TableCell>
                 <TableCell className={cn('text-right pr-5 text-xs font-medium', ch === null ? 'text-gray-400' : ch >= 0 ? 'text-green-600' : 'text-[#dc2626]')}>
                   {ch === null ? '—' : `${ch >= 0 ? '+' : ''}${ch.toFixed(1)}%`}
@@ -251,7 +276,7 @@ function OrdersTable({ orders, s }: { orders: Order[]; s: AppState }) {
       <TableBody>
         {orders.map((o) => (
           <TableRow key={o.id}>
-            <TableCell className="pl-5"><Link href={`/orders/${o.id}`} className="font-medium text-[#1e40af] hover:underline">{o.number}</Link></TableCell>
+            <TableCell className="pl-5"><Link href={`/orders/${o.id}`} className="font-medium text-[#c8151d] hover:underline">{o.number}</Link></TableCell>
             <TableCell className="text-gray-500">{fmtDateTime(o.placedAt)}</TableCell>
             <TableCell>{o.customerName}</TableCell>
             <TableCell className="text-gray-500">{branchName(s, o.branchId)}</TableCell>
@@ -327,7 +352,7 @@ function ProductsTab({ ctx }: { ctx: Ctx }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm print:hidden">
           {(['revenue', 'qty'] as const).map((m) => (
-            <button key={m} onClick={() => setMetric(m)} className={cn('px-3 py-1.5 text-sm rounded-md font-medium', metric === m ? 'bg-[#1e40af] text-white' : 'text-gray-600 hover:bg-gray-50')}>
+            <button key={m} onClick={() => setMetric(m)} className={cn('px-3 py-1.5 text-sm rounded-md font-medium', metric === m ? 'bg-[#c8151d] text-white' : 'text-gray-600 hover:bg-gray-50')}>
               Rank by {m === 'revenue' ? 'revenue' : 'quantity'}
             </button>
           ))}
@@ -364,7 +389,7 @@ function ProductsTab({ ctx }: { ctx: Ctx }) {
           {unsold.length === 0 ? <EmptyState title="Every active product sold at least once" /> : (
             <ul className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
               {unsold.map((p) => (
-                <li key={p.id} className="flex items-center gap-3 px-5 py-2 text-sm"><span>{p.image}</span><span className="flex-1 truncate">{p.name}</span><span className="text-xs text-gray-400">{p.sku}</span></li>
+                <li key={p.id} className="flex items-center gap-3 px-5 py-2 text-sm"><span><ProductImage image={p.image} /></span><span className="flex-1 truncate">{p.name}</span><span className="text-xs text-gray-400">{p.sku}</span></li>
               ))}
             </ul>
           )}
@@ -391,9 +416,9 @@ function ProductTable({ list, title }: { list: ProductRow[]; title: string }) {
         <TableBody>
           {list.map((r) => (
             <TableRow key={r.id}>
-              <TableCell className="pl-5"><span className="mr-2">{r.image}</span><span className="font-medium text-gray-900">{r.name}</span></TableCell>
+              <TableCell className="pl-5"><span className="mr-2"><ProductImage image={r.image} /></span><span className="font-medium text-gray-900">{r.name}</span></TableCell>
               <TableCell className="text-right">{Number.isInteger(r.qty) ? r.qty : r.qty.toFixed(1)}</TableCell>
-              <TableCell className="text-right font-semibold text-[#1e40af]">{pesoShort(r.revenue)}</TableCell>
+              <TableCell className="text-right font-semibold text-[#c8151d]">{pesoShort(r.revenue)}</TableCell>
               <TableCell className={cn('text-right pr-5 text-sm', r.marginPct < 15 ? 'text-[#dc2626]' : 'text-green-700')}>{pesoShort(r.margin)} · {r.marginPct.toFixed(0)}%</TableCell>
             </TableRow>
           ))}
@@ -407,6 +432,7 @@ function ProductTable({ list, title }: { list: ProductRow[]; title: string }) {
 // ---------------------------------------------------------------- Customers
 function CustomersTab({ ctx }: { ctx: Ctx }) {
   const { s, cur, all, prev } = ctx;
+  const now = useNow();
   const sales = cur.filter(isSale);
   const firstOrder = new Map<string, number>();
   for (const o of all) {
@@ -433,7 +459,7 @@ function CustomersTab({ ctx }: { ctx: Ctx }) {
     { bucket: '3–4 orders', count: buyers.filter(([, l]) => l.length >= 3 && l.length <= 4).length },
     { bucket: '5+ orders', count: buyers.filter(([, l]) => l.length >= 5).length },
   ];
-  const churn = lifetime.filter((x) => Date.now() - new Date(x.last).getTime() > 7 * DAY).length;
+  const churn = lifetime.filter((x) => now - new Date(x.last).getTime() > 7 * DAY).length;
   const byCity = [...groupBy(sales, (o) => s.customers.find((c) => c.id === o.customerId)?.cityId ?? '')].map(([k, l]) => ({ name: cityName(s, k), value: new Set(l.map((o) => o.customerId)).size }));
 
   const csv = () => {
@@ -482,7 +508,7 @@ function CustomersTab({ ctx }: { ctx: Ctx }) {
           <ul className="space-y-3">
             {byCity.sort((a, b) => b.value - a.value).map((c, i) => (
               <li key={c.name}>
-                <div className="flex justify-between text-sm mb-1"><span className="text-gray-700">{c.name}</span><span className="font-semibold text-[#1e40af]">{c.value}</span></div>
+                <div className="flex justify-between text-sm mb-1"><span className="text-gray-700">{c.name}</span><span className="font-semibold text-[#c8151d]">{c.value}</span></div>
                 <ShareBar value={c.value} max={Math.max(...byCity.map((x) => x.value))} color={CHART_COLORS[i % CHART_COLORS.length]} />
               </li>
             ))}
@@ -510,7 +536,7 @@ function CustomersTab({ ctx }: { ctx: Ctx }) {
                 <TableCell className="font-medium text-gray-900">{x.name}</TableCell>
                 <TableCell className="text-gray-500">{x.city}</TableCell>
                 <TableCell className="text-right">{x.rangeOrders}</TableCell>
-                <TableCell className="text-right font-semibold text-[#1e40af]">{pesoShort(x.rangeSpend)}</TableCell>
+                <TableCell className="text-right font-semibold text-[#c8151d]">{pesoShort(x.rangeSpend)}</TableCell>
                 <TableCell className="text-right">{x.orders}</TableCell>
                 <TableCell className="text-right pr-5">{pesoShort(x.ltv)}</TableCell>
               </TableRow>
@@ -650,7 +676,7 @@ function FinanceTab({ ctx }: { ctx: Ctx }) {
         <KpiCard title="Payments collected" value={pesoShort(sum(paid, (o) => o.total))} sub={<span className="text-xs text-gray-400">{paid.length} transactions</span>} />
         <KpiCard title="Refunds" value={pesoShort(refundTotal)} sub={<span className="text-xs text-gray-400">{refunds.length} orders</span>} accent="border-l-[#dc2626]" />
         <KpiCard title="COD outstanding" value={pesoShort(codTotal)} sub={<span className="text-xs text-gray-400">held by {codRiders.length} riders</span>} accent="border-l-[#f59e0b]" />
-        <KpiCard title="Gateway fees" value={pesoShort(gatewayFees)} sub={<span className="text-xs text-gray-400">fee line charged to shopper</span>} accent="border-l-[#0891b2]" />
+        <KpiCard title="Gateway fees" value={pesoShort(gatewayFees)} sub={<span className="text-xs text-gray-400">fee line charged to the customer</span>} accent="border-l-[#0891b2]" />
         <KpiCard title="Discounts given" value={pesoShort(discounts)} sub={<span className="text-xs text-gray-400">vouchers & pickup discounts</span>} accent="border-l-[#9333ea]" />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -670,7 +696,7 @@ function FinanceTab({ ctx }: { ctx: Ctx }) {
                 <TableRow key={m.key}>
                   <TableCell className="pl-5 font-medium text-gray-900">{m.name}</TableCell>
                   <TableCell className="text-right">{m.count}</TableCell>
-                  <TableCell className="text-right font-semibold text-[#1e40af]">{peso(m.collected)}</TableCell>
+                  <TableCell className="text-right font-semibold text-[#c8151d]">{peso(m.collected)}</TableCell>
                   <TableCell className={cn('text-right', m.pending ? 'text-amber-600' : 'text-gray-400')}>{peso(m.pending)}</TableCell>
                   <TableCell className="text-right pr-5">{peso(m.fees)}</TableCell>
                 </TableRow>
@@ -723,7 +749,7 @@ function FinanceTab({ ctx }: { ctx: Ctx }) {
                 <TableBody>
                   {refunds.map((o) => (
                     <TableRow key={o.id}>
-                      <TableCell className="pl-5"><Link href={`/orders/${o.id}`} className="font-medium text-[#1e40af] hover:underline">{o.number}</Link><div className="text-xs text-gray-400">{o.rejectReason ?? branchName(s, o.branchId)}</div></TableCell>
+                      <TableCell className="pl-5"><Link href={`/orders/${o.id}`} className="font-medium text-[#c8151d] hover:underline">{o.number}</Link><div className="text-xs text-gray-400">{o.rejectReason ?? branchName(s, o.branchId)}</div></TableCell>
                       <TableCell className="text-gray-500">{PAYMENT_LABEL[o.paymentMethod]}</TableCell>
                       <TableCell><PaymentBadge status={o.paymentStatus} /></TableCell>
                       <TableCell className="text-right pr-5 font-semibold text-[#dc2626]">{peso(o.refundedAmount)}</TableCell>
@@ -758,7 +784,7 @@ function ScheduleDialog({ open, onOpenChange, defaultReport }: { open: boolean; 
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Schedule report</DialogTitle>
-          <DialogDescription>Send this report automatically by email (e.g. daily sales to branch managers).</DialogDescription>
+          <DialogDescription>Send this report automatically by email (e.g. daily sales to the owner).</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <label className="block"><span className="text-xs font-medium text-gray-600">Report</span>
@@ -767,7 +793,7 @@ function ScheduleDialog({ open, onOpenChange, defaultReport }: { open: boolean; 
             </select>
           </label>
           <label className="block"><span className="text-xs font-medium text-gray-600">Recipient email</span>
-            <input className={cn(inputClass, 'w-full mt-1')} type="email" placeholder="manager@freshmart.ph" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className={cn(inputClass, 'w-full mt-1')} type="email" placeholder="owner@jovannesmeatshop.ph" value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block"><span className="text-xs font-medium text-gray-600">Frequency</span>

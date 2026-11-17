@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ArrowRight, Calculator, Download, History, ListOrdered, Pencil, Plus, RotateCcw, ShieldAlert, Trash2, Trophy } from 'lucide-react';
 import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
@@ -15,6 +15,7 @@ import { CHANNEL_LABEL, can, cityName, exportCsv, fmtDate, fmtDateTime, getPrice
 import type { AppState, OrderChannel, PriceList } from '@/src/lib/types';
 import { Field, StateBadge, Toggle, categoryPath, categoryTree, descendantIds, roundPrice, today } from '@/src/components/catalog/shared';
 import { cn } from '@/src/lib/utils';
+import { ProductImage } from '@/src/components/ProductImage';
 
 const ICON = { strokeWidth: 1.75 };
 const BULK_KEY = 'freshmart-last-bulk-price';
@@ -68,7 +69,7 @@ function PricingInner({ s }: { s: AppState }) {
       </div>
 
       <Tabs defaultValue="lists">
-        <TabsList>
+        <TabsList className="max-w-full overflow-x-auto overflow-y-hidden justify-start">
           <TabsTrigger value="lists">Price lists</TabsTrigger>
           <TabsTrigger value="explorer">Price resolution explorer</TabsTrigger>
           <TabsTrigger value="bulk">Bulk price update</TabsTrigger>
@@ -85,7 +86,7 @@ function PricingInner({ s }: { s: AppState }) {
             )}
             bodyClass="p-0"
           >
-            <div className="px-5 py-3 text-xs text-gray-500 bg-blue-50/50 border-b border-gray-100">
+            <div className="px-5 py-3 text-xs text-gray-500 bg-red-50/50 border-b border-gray-100">
               Priority rule: <b>Branch</b> list beats <b>City</b> list beats <b>Channel</b> beats <b>Global</b>; within a level, a <b>scheduled</b> list beats the default during its dates. No match → product base price.
             </div>
             <Table>
@@ -105,7 +106,7 @@ function PricingInner({ s }: { s: AppState }) {
                       <TableCell className="text-sm text-gray-600">{scopeLabel(s, l)}</TableCell>
                       <TableCell className="text-xs text-gray-600">{l.startDate ? `${fmtDate(l.startDate)} → ${l.endDate ? fmtDate(l.endDate) : 'open'}` : 'Always'}</TableCell>
                       <TableCell><StateBadge value={st.v} label={st.label} /></TableCell>
-                      <TableCell className="text-right font-semibold text-[#1e40af]">{Object.keys(l.items).length}</TableCell>
+                      <TableCell className="text-right font-semibold text-[#c8151d]">{Object.keys(l.items).length}</TableCell>
                       <TableCell className="text-right pr-5">
                         <Button variant="outline" size="sm" onClick={() => { setIsNew(false); setEditing(l); }}><Pencil {...ICON} /> {canEdit ? 'Edit items' : 'View'}</Button>
                       </TableCell>
@@ -134,7 +135,7 @@ function PricingInner({ s }: { s: AppState }) {
                       <TableCell className="text-sm text-gray-600">{a.detail}</TableCell>
                       <TableCell className="text-right text-gray-400 line-through">{a.oldValue}</TableCell>
                       <TableCell>{a.oldValue && <ArrowRight className="w-3.5 h-3.5 text-gray-300" {...ICON} />}</TableCell>
-                      <TableCell className="font-semibold text-[#1e40af]">{a.newValue}</TableCell>
+                      <TableCell className="font-semibold text-[#c8151d]">{a.newValue}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -199,13 +200,13 @@ function ListDialog({ s, list, isNew, canEdit, onClose }: { s: AppState; list: P
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{isNew ? 'New price list' : list.name}</DialogTitle>
           <DialogDescription>Prices in this list override the base price for the chosen scope. Leave dates empty for an always-on list.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Field label="Name" className="col-span-2"><input className={inputClass} value={f.name} disabled={!canEdit} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Payday Promo Matina" /></Field>
+          <Field label="Name" className="col-span-2"><input className={inputClass} value={f.name} disabled={!canEdit} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Payday Promo Digos" /></Field>
           <Field label="Scope">
             <select className={selectClass} value={f.scope} disabled={!canEdit} onChange={(e) => { const sc = e.target.value as PriceList['scope']; setF((x) => ({ ...x, scope: sc, scopeId: sc === 'city' ? s.cities[0].id : sc === 'branch' ? s.session.branchId : undefined })); }}>
               <option value="global">Global</option><option value="city">City</option><option value="branch">Branch</option><option value="channel">Channel</option>
@@ -233,7 +234,7 @@ function ListDialog({ s, list, isNew, canEdit, onClose }: { s: AppState; list: P
                 const diff = p ? ((price - p.basePrice) / p.basePrice) * 100 : 0;
                 return (
                   <TableRow key={pid}>
-                    <TableCell>{p?.image} {p?.name ?? pid} <span className="text-xs text-gray-400">{p?.size}</span></TableCell>
+                    <TableCell><ProductImage image={p?.image} /> {p?.name ?? pid} <span className="text-xs text-gray-400">{p?.size}</span></TableCell>
                     <TableCell className="text-right text-gray-500">{p ? peso(p.basePrice) : '—'}</TableCell>
                     <TableCell className="text-right">
                       <input type="number" step="0.25" className={cn(inputClass, 'w-28 text-right')} disabled={!canEdit} value={price} onChange={(e) => setF((x) => ({ ...x, items: { ...x.items, [pid]: Number(e.target.value) } }))} />
@@ -249,7 +250,7 @@ function ListDialog({ s, list, isNew, canEdit, onClose }: { s: AppState; list: P
         </div>
         {canEdit && (
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="Add product" className="flex-1 min-w-56">
+            <Field label="Add product" className="flex-1 min-w-0 basis-56">
               <select className={selectClass} value={addPid} onChange={(e) => { setAddPid(e.target.value); const p = s.products.find((x) => x.id === e.target.value); if (p) setAddPrice(String(p.basePrice)); }}>
                 <option value="">Select product…</option>
                 {unused.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.size}) — base {peso(p.basePrice)}</option>)}
@@ -277,9 +278,9 @@ function Explorer({ s }: { s: AppState }) {
 
   return (
     <Panel title="Price resolution explorer" action={
-      <div className="flex gap-2">
-        <select className={selectClass} value={pid} onChange={(e) => setPid(e.target.value)}>
-          {s.products.map((x) => <option key={x.id} value={x.id}>{x.image} {x.name} ({x.size}){s.priceLists.some((l) => l.items[x.id] !== undefined) ? ' ★' : ''}</option>)}
+      <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+        <select className={cn(selectClass, 'flex-1 sm:flex-none sm:max-w-xs')} value={pid} onChange={(e) => setPid(e.target.value)}>
+          {s.products.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.size}){s.priceLists.some((l) => l.items[x.id] !== undefined) ? ' ★' : ''}</option>)}
         </select>
         <select className={selectClass} value={channel} onChange={(e) => setChannel(e.target.value as OrderChannel)}>
           {(['app', 'walk_in', 'phone'] as OrderChannel[]).map((c) => <option key={c} value={c}>{CHANNEL_LABEL[c]}</option>)}
@@ -313,13 +314,13 @@ function Explorer({ s }: { s: AppState }) {
                     <div className="flex flex-wrap gap-1">
                       {cands.length === 0 && <span className="text-xs text-gray-400">none</span>}
                       {cands.map((l, i) => (
-                        <Pill key={l.id} className={i === 0 ? 'bg-blue-100 text-[#1e40af]' : 'line-through text-gray-400'}>
+                        <Pill key={l.id} className={i === 0 ? 'bg-red-100 text-[#c8151d]' : 'line-through text-gray-400'}>
                           {l.name} · {l.scope}{l.startDate ? ' (scheduled)' : ''} · {peso(l.items[p.id])}
                         </Pill>
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-bold text-[#1e40af]">{peso(info.price)}</TableCell>
+                  <TableCell className="text-right font-bold text-[#c8151d]">{peso(info.price)}</TableCell>
                   <TableCell>
                     <span className={cn('inline-flex items-center gap-1 text-xs font-medium', info.source === 'Base price' ? 'text-gray-500' : 'text-green-700')}>
                       {info.source !== 'Base price' && <Trophy className="w-3.5 h-3.5" {...ICON} />}{info.source}
@@ -345,11 +346,10 @@ function BulkUpdate({ s, canEdit }: { s: AppState; canEdit: boolean }) {
   const threshold = num(getSetting(s, 'priceApprovalPct'));
   const canApprove = can(s, 'pricing.approve');
   const [approved, setApproved] = useState(false);
-  const [last, setLast] = useState<Batch | null>(null);
-
-  useEffect(() => {
-    try { const raw = localStorage.getItem(BULK_KEY); if (raw) setLast(JSON.parse(raw)); } catch { /* ignore */ }
-  }, []);
+  // Pages render only after the client store is ready (StoreProvider), so reading localStorage here is safe.
+  const [last, setLast] = useState<Batch | null>(() => {
+    try { const raw = localStorage.getItem(BULK_KEY); return raw ? (JSON.parse(raw) as Batch) : null; } catch { return null; }
+  });
 
   const brands = useMemo(() => Array.from(new Set(s.products.map((p) => p.brand))).sort(), [s.products]);
   const tree = categoryTree(s);
@@ -450,11 +450,11 @@ function BulkUpdate({ s, canEdit }: { s: AppState; canEdit: boolean }) {
               <TableBody>
                 {preview.map((r) => (
                   <TableRow key={r.p.id} className={Math.abs(r.change) > threshold ? 'bg-amber-50/60' : ''}>
-                    <TableCell>{r.p.image} {r.p.name} <span className="text-xs text-gray-400">{r.p.size}</span></TableCell>
+                    <TableCell><ProductImage image={r.p.image} /> {r.p.name} <span className="text-xs text-gray-400">{r.p.size}</span></TableCell>
                     <TableCell className="text-right text-gray-500">{peso(r.p.costPrice)}</TableCell>
                     <TableCell className="text-right text-gray-500">{peso(r.p.basePrice)}</TableCell>
                     <TableCell><ArrowRight className="w-3.5 h-3.5 text-gray-300" {...ICON} /></TableCell>
-                    <TableCell className="text-right font-semibold text-[#1e40af]">{peso(r.next)}</TableCell>
+                    <TableCell className="text-right font-semibold text-[#c8151d]">{peso(r.next)}</TableCell>
                     <TableCell className={cn('text-right text-xs font-medium', Math.abs(r.change) > threshold ? 'text-amber-700' : r.change < 0 ? 'text-green-700' : 'text-gray-700')}>{r.change > 0 ? '+' : ''}{r.change.toFixed(1)}%</TableCell>
                     <TableCell className={cn('text-right text-xs', r.newMargin < 0 ? 'text-[#dc2626] font-semibold' : 'text-gray-600')}>{r.oldMargin.toFixed(1)}% → {r.newMargin.toFixed(1)}%</TableCell>
                   </TableRow>

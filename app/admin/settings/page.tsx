@@ -50,12 +50,23 @@ function preview(key: string, v: SettingValue): string | null {
     case 'vatRate': return `Receipts compute VAT at ${v}%.`;
     case 'maxActiveOrders': return `A rider can carry at most ${v} order(s) at once.`;
     case 'peakSurcharge': return `Orders placed 5–7 PM pay ₱${v} extra delivery.`;
+    case 'weightTolerancePct': return `At packing, an actual weight within ${v}% of what the customer ordered is applied automatically; a bigger difference asks the customer first.`;
+    case 'meatMaxDeliveryMins': return `Fresh and frozen orders must reach the customer within ${v} minutes of rider pickup. The Rider App shows a countdown.`;
+    case 'insulatedBagRequired': return v
+      ? 'Packers must confirm the insulated bag + ice packs before a meat order is marked ready, and the rider confirms the bag at pickup.'
+      : 'The insulated-bag check is optional on the Order Desk and Rider App.';
     default:
-      if (key.startsWith('ff_')) return v ? 'Feature is switched on in every app — no app-store update needed.' : 'Feature is hidden in every app — no app-store update needed.';
+      if (key.startsWith('ff_')) return v ? 'Feature is switched on in every app — no app update needed.' : 'Feature is hidden in every app — no app update needed.';
       if (key.startsWith('pay_')) return v ? 'This payment method shows at checkout.' : 'This payment method is hidden at checkout.';
       return null;
   }
 }
+
+/** Display order of the setting groups (meat & cold-chain rules near the top). Unknown groups follow in data order. */
+const GROUP_ORDER: Setting['group'][] = [
+  'Order confirmation', 'Order rules', 'Meat & cold chain', 'Fulfillment', 'Delivery fees', 'Payments', 'Pricing & tax',
+  'Inventory', 'Riders', 'Support', 'Feature flags', 'Security',
+];
 
 function valueAt(s: AppState, st: Setting, kind: ScopeKind, id: string): { value: SettingValue; source: Source; own: boolean } {
   if (kind === 'global') return { value: st.global, source: 'global', own: true };
@@ -94,7 +105,8 @@ export default function SettingsPage() {
     return <DashboardLayout title="Settings" eyebrow="Administration" hideBranch><AccessDenied permission="settings.view" /></DashboardLayout>;
   }
   const editable = can(s, 'settings.edit');
-  const groups = Array.from(new Set(s.settings.map((x) => x.group)));
+  const present = Array.from(new Set(s.settings.map((x) => x.group)));
+  const groups = [...GROUP_ORDER.filter((g) => present.includes(g)), ...present.filter((g) => !GROUP_ORDER.includes(g))];
   const scopeId = kind === 'city' ? cityId : kind === 'branch' ? branchId : '';
   const scopeName = kind === 'global' ? 'Global default' : kind === 'city' ? cityName(s, cityId) : s.branches.find((b) => b.id === branchId)?.name ?? '—';
   const list = q
@@ -146,7 +158,7 @@ export default function SettingsPage() {
             <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
               {([['global', 'Global', Globe2], ['city', 'City', Building2], ['branch', 'Branch', Store]] as const).map(([k, label, Icon]) => (
                 <button key={k} onClick={() => setKind(k)}
-                  className={cn('flex items-center gap-1.5 px-3 h-8 rounded-md text-sm font-medium transition-colors', kind === k ? 'bg-white shadow-sm text-[#1e40af]' : 'text-gray-500 hover:text-gray-800')}>
+                  className={cn('flex items-center gap-1.5 px-3 h-8 rounded-md text-sm font-medium transition-colors', kind === k ? 'bg-white shadow-sm text-[#c8151d]' : 'text-gray-500 hover:text-gray-800')}>
                   <Icon className="w-4 h-4" strokeWidth={1.75} />{label}
                 </button>
               ))}
@@ -174,25 +186,28 @@ export default function SettingsPage() {
             <span className="flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" strokeWidth={1.75} />Effective date (optional)</span>
             <input type="date" className={inputClass} value={effective} onChange={(e) => setEffective(e.target.value)} />
           </label>
-          <div className="relative ml-auto">
+          <div className="relative w-full sm:w-auto sm:ml-auto">
             <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" strokeWidth={1.75} />
-            <input className={cn(inputClass, 'pl-8 w-64')} placeholder="Search all settings" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className={cn(inputClass, 'pl-8 w-full sm:w-64')} placeholder="Search all settings" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
-          <p className="basis-full text-xs text-gray-500 flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5" strokeWidth={1.75} />
-            Most specific value wins: <b>Branch override</b> → <b>City override</b> → <b>Global default</b>. You are editing <b className="text-[#1e40af]">{scopeName}</b>{kind !== 'global' && ' — changes here create an override for this scope only'}.
-            {futureDate && <span className="text-amber-700 font-medium"> Changes will be logged as scheduled for {futureDate}.</span>}
+          <p className="basis-full text-xs text-gray-500 flex items-start gap-1.5">
+            <Info className="w-3.5 h-3.5 mt-px shrink-0" strokeWidth={1.75} />
+            <span>
+              Most specific value wins: <b>Branch override</b> → <b>City override</b> → <b>Global default</b>. You are editing <b className="text-[#c8151d]">{scopeName}</b>{kind !== 'global' && ' — changes here create an override for this scope only'}.
+              {futureDate && <span className="text-amber-700 font-medium"> Changes will be logged as scheduled for {futureDate}.</span>}
+            </span>
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-[220px_1fr] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-5 items-start">
           {/* Groups */}
-          <nav className="bg-white rounded-xl shadow-sm border border-gray-100 p-2 lg:sticky lg:top-20">
+          {/* Phones/tablets: a horizontal scroll strip. lg+: the vertical list. */}
+          <nav className="bg-white rounded-xl shadow-sm border border-gray-100 p-2 lg:sticky lg:top-20 flex gap-1 overflow-x-auto lg:block min-w-0">
             {groups.map((g) => {
               const n = overrideCount(g);
               return (
                 <button key={g} onClick={() => { setGroup(g); setQ(''); }}
-                  className={cn('w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors', !q && group === g ? 'bg-[#1e40af]/10 text-[#1e40af] font-medium' : 'text-gray-700 hover:bg-gray-50')}>
+                  className={cn('shrink-0 lg:w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between gap-2 whitespace-nowrap transition-colors', !q && group === g ? 'bg-[#c8151d]/10 text-[#c8151d] font-medium' : 'text-gray-700 hover:bg-gray-50')}>
                   <span>{g}</span>
                   <span className="text-[10px] text-gray-400">{s.settings.filter((x) => x.group === g).length}{n ? ` · ${n}↓` : ''}</span>
                 </button>
@@ -215,8 +230,8 @@ export default function SettingsPage() {
                   const canReset = kind !== 'global' && r.own;
                   const pv = preview(st.key, r.value);
                   return (
-                    <li key={st.key} className="px-5 py-4 flex flex-wrap items-center gap-4">
-                      <div className="flex-1 min-w-[220px]">
+                    <li key={st.key} className="px-4 sm:px-5 py-4 flex flex-wrap items-center gap-3 sm:gap-4">
+                      <div className="flex-1 min-w-[200px]">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium text-gray-900 text-sm">{st.label}</p>
                           <SourceBadge source={r.source} />
@@ -229,11 +244,11 @@ export default function SettingsPage() {
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 max-w-full">
                         <Editor st={st} value={r.value} disabled={!editable} onChange={(v) => change(st, v)} />
                         {canReset ? (
                           <Button size="sm" variant="ghost" disabled={!editable} onClick={() => reset(st)} title="Remove this override"><RotateCcw className="w-3.5 h-3.5" strokeWidth={1.75} />Reset to inherited</Button>
-                        ) : <span className="w-[148px]" />}
+                        ) : <span className="hidden sm:block w-[148px]" />}
                       </div>
                     </li>
                   );
@@ -265,7 +280,7 @@ function Editor({ st, value, disabled, onChange }: { st: Setting; value: Setting
   if (st.type === 'boolean') return <Toggle checked={!!value} disabled={disabled} onChange={onChange} label={st.label} />;
   if (st.type === 'select') {
     return (
-      <select className={cn(selectClass, 'w-56')} disabled={disabled} value={String(value)} onChange={(e) => onChange(e.target.value)}>
+      <select className={cn(selectClass, 'w-56 max-w-full')} disabled={disabled} value={String(value)} onChange={(e) => onChange(e.target.value)}>
         {(st.options ?? []).map((o) => <option key={o}>{o}</option>)}
       </select>
     );
@@ -280,7 +295,7 @@ function Editor({ st, value, disabled, onChange }: { st: Setting; value: Setting
   return (
     <div className="flex items-center gap-1.5">
       {st.unit === '₱' && <span className="text-sm text-gray-500">₱</span>}
-      <input className={cn(inputClass, st.type === 'number' ? 'w-24 text-right' : 'w-56')} disabled={disabled} value={text}
+      <input className={cn(inputClass, st.type === 'number' ? 'w-24 text-right' : 'w-56 max-w-full')} disabled={disabled} value={text}
         type={st.type === 'number' ? 'number' : 'text'}
         onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
       {st.unit && st.unit !== '₱' && <span className="text-xs text-gray-500 w-10">{st.unit}</span>}
@@ -304,10 +319,10 @@ function PaymentsMatrix({ editable }: { editable: boolean }) {
       else st.branch[branchId] = next;
       addAudit(d, { module: 'Settings', action: 'Payment method', detail: `${method.label} ${next ? 'enabled' : 'disabled'} at ${b.name}`, branchId, oldValue: cur ? 'On' : 'Off', newValue: next ? 'On' : 'Off' });
     });
-    toast.success(`${method.label} ${next ? 'enabled' : 'disabled'} at ${b.name}`, { description: 'Checkout updates instantly in the Shopper App.' });
+    toast.success(`${method.label} ${next ? 'enabled' : 'disabled'} at ${b.name}`, { description: 'Checkout updates instantly in the Customer App.' });
   };
   return (
-    <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><CreditCard className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />Payment methods per branch</h2>} bodyClass="p-0 overflow-x-auto">
+    <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><CreditCard className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />Payment methods per branch</h2>} bodyClass="p-0 overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>

@@ -1,10 +1,13 @@
 // Delivery-module helpers (dispatch ranking, workload, payouts).
 // Kept local to the delivery/rider screens; all data comes from the shared store.
+// Phase 1 (spec v6): the shop uses its own riders only — no freelance riders, no courier partners.
 
+import { useEffect, useState } from 'react';
 import type { AppState, Order, Rider } from '@/src/lib/types';
 import { distanceKm, getSetting, riderPosition } from '@/src/lib/logic';
 
-export const RIDER_TYPE_LABEL: Record<Rider['type'], string> = { own: 'Own rider', freelance: 'Freelance', courier: 'Courier partner' };
+// Only 'own' riders are used in Phase 1; the other keys exist because the data type still allows them.
+export const RIDER_TYPE_LABEL: Record<Rider['type'], string> = { own: 'Own rider', freelance: 'Rider', courier: 'Rider' };
 export const VEHICLE_LABEL: Record<Rider['vehicle'], string> = { bicycle: 'Bicycle', motorcycle: 'Motorcycle', car: 'Car', van: 'Van' };
 export const RIDER_STATUS_CLASS: Record<Rider['status'], string> = {
   online: 'bg-green-100 text-green-800',
@@ -13,12 +16,34 @@ export const RIDER_STATUS_CLASS: Record<Rider['status'], string> = {
   pending: 'bg-amber-100 text-amber-800',
 };
 
-/** Pay rules per rider type (base per trip + per km). Editable by admin in production. */
+/** Pay rule for the shop's own riders (base per trip + per km). Editable by admin in production. */
 export const PAY_RULES: Record<Rider['type'], { base: number; perKm: number }> = {
   own: { base: 60, perKm: 8 },
-  freelance: { base: 50, perKm: 10 },
-  courier: { base: 0, perKm: 0 },
+  freelance: { base: 60, perKm: 8 },
+  courier: { base: 60, perKm: 8 },
 };
+
+/** The shop's own riders (optionally only those serving one branch). */
+export function ownRiders(s: AppState, branchId?: string) {
+  return s.riders.filter((r) => r.type === 'own' && (!branchId || r.branchIds.includes(branchId)));
+}
+
+/** Current time, refreshed every `ms`. Keeps render pure: Date.now() is read in the timer, not during render. */
+export function useNow(ms = 1000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
+/** Cold-chain deadline: rider pickup time + maximum delivery minutes. */
+export function deliverBy(o: Order, now: number) {
+  if (!o.outForDeliveryAt || !o.maxDeliveryMins) return undefined;
+  const due = new Date(o.outForDeliveryAt).getTime() + o.maxDeliveryMins * 60_000;
+  return { due: new Date(due).toISOString(), minsLeft: Math.ceil((due - now) / 60_000), overdue: now > due };
+}
 
 /** Active jobs = orders assigned to this rider that are not yet finished. */
 export function riderJobs(s: AppState, riderId: string) {
@@ -59,27 +84,23 @@ export function tipFor(o: Order) {
 
 export interface Candidate { rider: Rider; km: number; load: number }
 
-/** Candidate riders for an order, sorted by the admin's dispatch rule. Courier partners are fallback. */
+/** Candidate own riders for an order, sorted by the admin's dispatch rule. */
 export function rankCandidates(s: AppState, o: Order, ruleOverride?: string): { list: Candidate[]; rule: string } {
   const rule = ruleOverride ?? String(getSetting(s, 'dispatchRule', o.branchId));
   const b = s.branches.find((x) => x.id === o.branchId);
   const max = Number(getSetting(s, 'maxActiveOrders', o.branchId)) || 2;
   const list = s.riders
-    .filter((r) => r.status === 'online' && r.branchIds.includes(o.branchId) && r.id !== o.riderId)
+    .filter((r) => r.type === 'own' && r.status === 'online' && r.branchIds.includes(o.branchId) && r.id !== o.riderId)
     .map((r) => {
       const pos = liveRiderPos(s, r);
       return { rider: r, km: b ? distanceKm(b, pos) : 0, load: workload(s, r.id) };
     })
-    .filter((c) => c.rider.type === 'courier' || c.load < max);
-  const typeRank = { own: 0, freelance: 1, courier: 2 } as const;
+    .filter((c) => c.load < max);
   list.sort((a, c) => {
-    // Courier partners always last except in the type-priority rule (where they're last anyway).
-    const courier = (a.rider.type === 'courier' ? 1 : 0) - (c.rider.type === 'courier' ? 1 : 0);
-    if (courier) return courier;
     if (rule.startsWith('Nearest')) return a.km - c.km;
     if (rule.startsWith('Lowest')) return a.load - c.load || a.km - c.km;
     if (rule.startsWith('Highest')) return c.rider.rating - a.rider.rating || a.km - c.km;
-    return typeRank[a.rider.type] - typeRank[c.rider.type] || a.load - c.load || a.km - c.km;
+    return a.load - c.load || a.km - c.km;
   });
   return { list, rule };
 }

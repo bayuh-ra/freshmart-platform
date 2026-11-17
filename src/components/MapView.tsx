@@ -54,13 +54,13 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], lines =
     if (!lf || !layer.current || !map.current) return;
     layer.current.clearLayers();
     for (const c of circles) {
-      lf.circle([c.lat, c.lng], { radius: c.radiusKm * 1000, color: c.color ?? '#1e40af', weight: 1.5, fillOpacity: 0.07 }).addTo(layer.current);
+      lf.circle([c.lat, c.lng], { radius: c.radiusKm * 1000, color: c.color ?? '#c8151d', weight: 1.5, fillOpacity: 0.07 }).addTo(layer.current);
     }
     for (const l of lines) {
-      lf.polyline(l.points, { color: l.color ?? '#1e40af', weight: 3, dashArray: l.dashed ? '6 6' : undefined }).addTo(layer.current);
+      lf.polyline(l.points, { color: l.color ?? '#c8151d', weight: 3, dashArray: l.dashed ? '6 6' : undefined }).addTo(layer.current);
     }
     for (const m of markers) {
-      const html = `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:${m.color ?? '#1e40af'};color:#fff;font-size:16px;font-weight:700;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">${m.pulse ? `<span class="rider-pulse" style="position:absolute;inset:-3px;border-radius:999px;border:3px solid ${m.color ?? '#1e40af'}"></span>` : ''}${m.label}</div>`;
+      const html = `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:${m.color ?? '#c8151d'};color:#fff;font-size:16px;font-weight:700;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">${m.pulse ? `<span class="rider-pulse" style="position:absolute;inset:-3px;border-radius:999px;border:3px solid ${m.color ?? '#c8151d'}"></span>` : ''}${m.label}</div>`;
       const mk = lf.marker([m.lat, m.lng], { icon: lf.divIcon({ html, className: '', iconSize: [34, 34], iconAnchor: [17, 17] }) }).addTo(layer.current);
       if (m.title) mk.bindTooltip(m.title);
       if (m.onClick) mk.on('click', m.onClick);

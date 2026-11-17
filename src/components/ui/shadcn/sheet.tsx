@@ -86,7 +86,7 @@ function SheetContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="sheet-close"
-            className="absolute top-4 right-4 rounded-md text-gray-400 opacity-70 transition-opacity hover:opacity-100 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1e40af]/30 disabled:pointer-events-none"
+            className="absolute top-4 right-4 rounded-md text-gray-400 opacity-70 transition-opacity hover:opacity-100 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8151d]/30 disabled:pointer-events-none"
           >
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
@@ -121,7 +121,7 @@ function SheetTitle({ className, ...props }: React.ComponentProps<typeof DialogP
   return (
     <DialogPrimitive.Title
       data-slot="sheet-title"
-      className={cn('text-base font-semibold text-[#1e40af] leading-tight', className)}
+      className={cn('text-base font-semibold text-[#c8151d] leading-tight', className)}
       {...props}
     />
   );

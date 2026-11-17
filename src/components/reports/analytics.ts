@@ -2,8 +2,8 @@
 import type { AppState, Order } from '@/src/lib/types';
 import { getSetting, num, OPEN_STATUSES, lineTotal } from '@/src/lib/logic';
 
-export const BLUE = '#1e40af';
-export const CHART_COLORS = ['#1e40af', '#0891b2', '#16a34a', '#f59e0b', '#9333ea', '#dc2626', '#64748b'];
+export const BLUE = '#c8151d';
+export const CHART_COLORS = ['#c8151d', '#0891b2', '#16a34a', '#f59e0b', '#9333ea', '#dc2626', '#64748b'];
 
 export const DAY = 86_400_000;
 

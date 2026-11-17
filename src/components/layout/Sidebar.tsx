@@ -6,14 +6,15 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, ClipboardList, PlusCircle, CalendarCheck, Package, Tags, Warehouse, Truck, MapPinned, Bike,
-  Users, TicketPercent, MessagesSquare, BarChart3, Building2, ShieldCheck, Settings, ScrollText, Smartphone, Navigation, Image as ImageIcon,
+  Users, TicketPercent, MessagesSquare, BarChart3, Building2, ShieldCheck, Settings, ScrollText, Smartphone, Navigation, Image as ImageIcon, Menu, X,
 } from 'lucide-react';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/src/components/ui/shadcn/sheet';
 import { Badge } from '@/src/components/ui/shadcn/badge';
 import { useStore } from '@/src/lib/store';
 import { can } from '@/src/lib/logic';
 import { moduleForPath, moduleOn } from '@/src/lib/platform';
 
-interface NavItem { label: string; href: string; icon: React.ReactNode; perm?: string; badge?: 'orders' | 'support' }
+interface NavItem { label: string; href: string; icon: React.ReactNode; perm?: string; badge?: 'orders' | 'support'; newTab?: boolean }
 interface NavModule { key: string; label: string; href?: string; icon?: React.ReactNode; items?: NavItem[] }
 
 const I = (C: React.ComponentType<{ className?: string; strokeWidth?: number }>) => <C className="w-5 h-5" strokeWidth={1.75} />;
@@ -70,10 +71,10 @@ export const navModules: NavModule[] = [
     ],
   },
   {
-    key: 'apps', label: 'Mobile Apps (Preview)',
+    key: 'apps', label: 'Customer & Rider websites',
     items: [
-      { label: 'Shopper App', href: '/shopper', icon: I(Smartphone) },
-      { label: 'Rider App', href: '/rider', icon: I(Bike) },
+      { label: 'Customer website', href: '/', icon: I(Smartphone), newTab: true },
+      { label: 'Rider website', href: '/rider', icon: I(Bike), newTab: true },
     ],
   },
 ];
@@ -81,19 +82,8 @@ export const navModules: NavModule[] = [
 const EXPANDED_WIDTH = 240;
 const COLLAPSED_WIDTH = 68;
 
-export function Sidebar() {
-  const [hovered, setHovered] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const collapsed = !hovered;
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
-  const handleEnter = (e: React.PointerEvent) => {
-    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
-    if (e.pointerType !== 'touch' && window.matchMedia('(min-width: 768px)').matches) setHovered(true);
-  };
-  const handleLeave = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setHovered(false), 120);
-  };
+/** Visible nav modules + badge counts + active-link logic, shared by the desktop rail and the phone drawer. */
+function useNav() {
   const pathname = usePathname() ?? '';
   const s = useStore();
 
@@ -112,70 +102,125 @@ export function Sidebar() {
     // Prefer the most specific match (e.g. /orders/new over /orders)
     return !allHrefs.some((h) => h !== href && h.startsWith(href) && (pathname === h || pathname.startsWith(h + '/')));
   };
+  return { pathname, visible, badgeFor, isActiveHref };
+}
+
+function Brand({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+  return (
+    <Link href="/dashboard" title="Jovanne’s Meat Shop" onClick={onNavigate} className="flex items-center gap-2 min-w-0">
+      <Image src="/jovannes-icon.png" alt="Jovanne’s Meat Shop" width={512} height={512} className="h-9 w-9 rounded-lg shrink-0" />
+      {!collapsed && (
+        <span className="flex flex-col leading-none min-w-0">
+          <span className="text-[#ec1b26] font-bold uppercase tracking-wide text-base truncate" style={{ fontFamily: 'var(--font-oswald)' }}>Jovanne’s</span>
+          <span className="text-white text-sm -mt-0.5 truncate" style={{ fontFamily: 'var(--font-lobster)' }}>Meat Shop</span>
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function NavList({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+  const { pathname, visible, badgeFor, isActiveHref } = useNav();
+  return (
+    <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2">
+      {visible.map((m, idx) => {
+        if (m.href && !m.items) {
+          const active = pathname === m.href;
+          return (
+            <Link key={m.key} href={m.href} title={collapsed ? m.label : undefined} onClick={onNavigate}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm mb-1 transition-colors ${active ? 'bg-white text-[#c8151d] font-semibold' : 'text-stone-200 hover:bg-white/10'}`}>
+              <span className={`relative shrink-0 ${active ? 'text-[#c8151d]' : 'text-stone-300'}`}>{m.icon}</span>
+              {!collapsed && <span className="flex-1 truncate">{m.label}</span>}
+            </Link>
+          );
+        }
+        return (
+          <div key={m.key} className={idx > 0 ? 'mt-4' : ''}>
+            {!collapsed ? (
+              <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-stone-300/70 whitespace-nowrap">{m.label}</p>
+            ) : (
+              idx > 0 && <div className="my-2 mx-3 border-t border-white/10" />
+            )}
+            <ul className="space-y-0.5">
+              {m.items?.map((item) => {
+                const active = isActiveHref(item.href);
+                const badge = badgeFor(item.badge);
+                return (
+                  <li key={item.href}>
+                    <Link href={item.href} title={collapsed ? item.label : undefined} onClick={onNavigate} target={item.newTab ? '_blank' : undefined}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${active ? 'bg-white text-[#c8151d] font-semibold' : 'text-stone-200 hover:bg-white/10'}`}>
+                      <span className={`relative shrink-0 ${active ? 'text-[#c8151d]' : 'text-stone-300'}`}>
+                        {item.icon}
+                        {badge > 0 && collapsed && <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#dc2626] rounded-full ring-2 ring-[#c8151d]" />}
+                      </span>
+                      {!collapsed && <span className="flex-1 truncate whitespace-nowrap">{item.label}</span>}
+                      {!collapsed && badge > 0 && (
+                        <Badge variant="destructive" className="text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] justify-center leading-none">{badge > 99 ? '99+' : badge}</Badge>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** Desktop / tablet icon rail (md and up). Expands on hover. Hidden on phones, where MobileNav is used. */
+export function Sidebar() {
+  const [hovered, setHovered] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collapsed = !hovered;
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+  const handleEnter = (e: React.PointerEvent) => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+    if (e.pointerType !== 'touch' && window.matchMedia('(min-width: 768px)').matches) setHovered(true);
+  };
+  const handleLeave = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setHovered(false), 120);
+  };
 
   return (
     <aside
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
       style={{ width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH }}
-      className="fixed inset-y-0 left-0 z-30 bg-[#1e40af] flex flex-col shrink-0 transition-[width] duration-200"
+      className="fixed inset-y-0 left-0 z-30 bg-[#2a2322] hidden md:flex flex-col shrink-0 transition-[width] duration-200"
     >
       <div className="h-16 flex items-center justify-between px-3 shrink-0 border-b border-white/10">
-        <Link href="/dashboard" title="FreshMart Platform" className="flex items-center gap-2 min-w-0">
-          <Image src="/lap-logo.png" alt="LAP I.T. Solutions Inc." width={100} height={71} className="h-8 w-8 object-contain shrink-0" />
-          {!collapsed && (
-            <span className="text-white font-bold text-sm leading-tight truncate" style={{ fontFamily: 'var(--font-ibm-plex-sans)' }}>
-              FreshMart Platform
-            </span>
-          )}
-        </Link>
+        <Brand collapsed={collapsed} />
       </div>
-
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2">
-        {visible.map((m, idx) => {
-          if (m.href && !m.items) {
-            const active = pathname === m.href;
-            return (
-              <Link key={m.key} href={m.href} title={collapsed ? m.label : undefined}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm mb-1 transition-colors ${active ? 'bg-white text-[#1e40af] font-semibold' : 'text-blue-100 hover:bg-white/10'}`}>
-                <span className={`relative shrink-0 ${active ? 'text-[#1e40af]' : 'text-blue-300'}`}>{m.icon}</span>
-                {!collapsed && <span className="flex-1 truncate">{m.label}</span>}
-              </Link>
-            );
-          }
-          return (
-            <div key={m.key} className={idx > 0 ? 'mt-4' : ''}>
-              {!collapsed ? (
-                <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-blue-200/70 whitespace-nowrap">{m.label}</p>
-              ) : (
-                idx > 0 && <div className="my-2 mx-3 border-t border-white/10" />
-              )}
-              <ul className="space-y-0.5">
-                {m.items?.map((item) => {
-                  const active = isActiveHref(item.href);
-                  const badge = badgeFor(item.badge);
-                  return (
-                    <li key={item.href}>
-                      <Link href={item.href} title={collapsed ? item.label : undefined}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${active ? 'bg-white text-[#1e40af] font-semibold' : 'text-blue-100 hover:bg-white/10'}`}>
-                        <span className={`relative shrink-0 ${active ? 'text-[#1e40af]' : 'text-blue-300'}`}>
-                          {item.icon}
-                          {badge > 0 && collapsed && <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#dc2626] rounded-full ring-2 ring-[#1e40af]" />}
-                        </span>
-                        {!collapsed && <span className="flex-1 truncate whitespace-nowrap">{item.label}</span>}
-                        {!collapsed && badge > 0 && (
-                          <Badge variant="destructive" className="text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] justify-center leading-none">{badge > 99 ? '99+' : badge}</Badge>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
-      </nav>
+      <NavList collapsed={collapsed} />
     </aside>
+  );
+}
+
+/** Phone drawer: hamburger button (below md) that opens the same nav in a left-side Sheet. */
+export function MobileNav() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button className="md:hidden -ml-1 w-9 h-9 flex items-center justify-center rounded-lg text-[#525569] hover:bg-black/5 shrink-0" aria-label="Open menu">
+          <Menu className="w-5 h-5" strokeWidth={1.75} />
+        </button>
+      </SheetTrigger>
+      <SheetContent side="left" className="bg-[#2a2322] border-r-0 w-[260px] max-w-[85vw]">
+        <SheetTitle className="sr-only">Menu</SheetTitle>
+        <SheetDescription className="sr-only">Jovanne’s Meat Shop navigation</SheetDescription>
+        <div className="h-16 flex items-center justify-between px-3 shrink-0 border-b border-white/10">
+          <Brand collapsed={false} onNavigate={() => setOpen(false)} />
+          <SheetClose className="w-9 h-9 flex items-center justify-center rounded-lg text-stone-200 hover:bg-white/10" aria-label="Close menu">
+            <X className="w-5 h-5" strokeWidth={1.75} />
+          </SheetClose>
+        </div>
+        <NavList collapsed={false} onNavigate={() => setOpen(false)} />
+      </SheetContent>
+    </Sheet>
   );
 }
 

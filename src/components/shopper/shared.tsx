@@ -1,19 +1,23 @@
 'use client';
 
-// Shared pieces for the Shopper App preview (phone-frame SPA).
-// Navigation is an in-memory stack router; the whole app reads one context.
+// Shared pieces for the Jovanne's Meat Shop customer website.
+// Every page reads one context (ShopContext, provided by the shop layout) and navigates with real URLs.
 
-import { createContext, useContext } from 'react';
-import { ChevronLeft, Minus, Plus, X } from 'lucide-react';
-import type { Address, AppState, Branch, Customer, Fulfillment, Product, SubstitutionPref } from '@/src/lib/types';
+import { createContext, useContext, useEffect, useLayoutEffect } from 'react';
+import Link from 'next/link';
+import { ChevronLeft, Minus, Phone, Plus, Snowflake, X } from 'lucide-react';
+import type { Address, AppState, Branch, CartLine, Customer, CutOption, Fulfillment, Product, SubstitutionPref } from '@/src/lib/types';
 import { mutate } from '@/src/lib/store';
-import { available, getPriceInfo, peso } from '@/src/lib/logic';
+import { available, getPriceInfo, getSetting, num, peso } from '@/src/lib/logic';
 import { cn } from '@/src/lib/utils';
+import { ProductImage as PhotoImg, isPhoto } from '@/src/components/ProductImage';
 
+// ---------- Routes ----------
 export type Route =
   | { name: 'home' }
   | { name: 'browse'; catId?: string; q?: string; focus?: boolean }
-  | { name: 'product'; id: string }
+  | { name: 'product'; id: string; editKey?: string }
+  | { name: 'profile' }
   | { name: 'cart' }
   | { name: 'checkout' }
   | { name: 'confirm'; orderId: string }
@@ -28,9 +32,38 @@ export type Route =
   | { name: 'help' }
   | { name: 'chat'; convId?: string };
 
+/** URL for a route of the customer website. */
+export function routeHref(r: Route): string {
+  switch (r.name) {
+    case 'home': return '/';
+    case 'browse':
+      if (r.catId) return `/category/${r.catId}`;
+      if (r.q) return `/search?q=${encodeURIComponent(r.q)}`;
+      return r.focus ? '/search' : '/category';
+    case 'product': return `/products/${r.id}${r.editKey ? `?edit=${encodeURIComponent(r.editKey)}` : ''}`;
+    case 'profile': return '/account/profile';
+    case 'cart': return '/cart';
+    case 'checkout': return '/checkout';
+    case 'confirm': return `/my-orders/${r.orderId}?placed=1`;
+    case 'orders': return '/my-orders';
+    case 'track': return `/my-orders/${r.orderId}`;
+    case 'receipt': return `/my-orders/${r.orderId}/receipt`;
+    case 'rate': return `/my-orders/${r.orderId}/rate`;
+    case 'account': return '/account';
+    case 'addresses': return '/account/addresses';
+    case 'vouchers': return '/account/vouchers';
+    case 'notifications': return '/account/notifications';
+    case 'help': return '/help';
+    case 'chat': return `/account/chat${r.convId ? `?c=${encodeURIComponent(r.convId)}` : ''}`;
+  }
+}
+
+export interface ToastAction { label: string; href: string }
+
 export interface ShopCtx {
   s: AppState;
-  shopper: Customer;
+  /** Signed-in customer (undefined while browsing as a guest). */
+  shopper?: Customer;
   addresses: Address[];
   addrIdx: number;
   address: Address;
@@ -48,35 +81,126 @@ export interface ShopCtx {
   setMode: (m: Fulfillment) => void;
   branchOverride?: string;
   setBranchOverride: (id?: string) => void;
-  go: (r: Route) => void;
-  back: () => void;
-  reset: (stack: Route[]) => void;
-  canGoBack: boolean;
-  flash: (text: string, tone?: 'ok' | 'err' | 'info') => void;
+  /** Navigate to a route or URL (adds a browser history entry). */
+  go: (r: Route | string) => void;
+  /** Navigate without adding a history entry. */
+  replace: (r: Route | string) => void;
+  /** Browser back, or `fallback` when there is no page to go back to. */
+  back: (fallback?: string) => void;
+  flash: (text: string, tone?: 'ok' | 'err' | 'info', action?: ToastAction) => void;
   openLocation: () => void;
   pendingVoucher: string;
   setPendingVoucher: (c: string) => void;
+  signOut: () => void;
+  /** True while signing out, so protected pages do not bounce to the sign-in page. */
+  signingOut: { current: boolean };
 }
 
 export const ShopContext = createContext<ShopCtx | null>(null);
 export function useShop() {
   const c = useContext(ShopContext);
-  if (!c) throw new Error('useShop outside ShopperApp');
+  if (!c) throw new Error('useShop outside the shop layout');
   return c;
 }
 
-/** Demo addresses beyond the shopper's saved ones (not persisted). */
+/** The signed-in customer. Only use inside pages wrapped in <RequireAuth>. */
+export function useMe(): Customer {
+  const { shopper } = useShop();
+  if (!shopper) throw new Error('useMe() needs a signed-in customer');
+  return shopper;
+}
+
+/** Sets the browser tab title from a client page ("Beef Brisket | Jovanne's Meat Shop"). */
+export function useDocumentTitle(title?: string) {
+  useLayoutEffect(() => {
+    if (!title) return;
+    const next = `${title} | Jovanne’s Meat Shop`;
+    let prev = document.title;
+    // Next.js writes the route's metadata title after this runs, so re-apply ours whenever <head> changes.
+    const apply = () => {
+      if (document.title === next) return;
+      prev = document.title;
+      document.title = next;
+    };
+    apply();
+    const obs = new MutationObserver(apply);
+    obs.observe(document.head, { subtree: true, childList: true, characterData: true });
+    return () => {
+      obs.disconnect();
+      // Only restore when the next page did not set its own title.
+      if (document.title === next) document.title = prev;
+    };
+  }, [title]);
+}
+
+/** Demo addresses beyond the customer's saved ones (not persisted). */
 export const DEMO_ADDRESSES: Address[] = [
-  { label: 'Work', line: 'Lanang Business Park, J.P. Laurel Ave, Davao City', landmark: 'Tower 2 lobby', lat: 7.1012, lng: 125.6382 },
-  { label: 'Other', line: 'Calinan Poblacion, Davao City (far)', landmark: "Lola's house", lat: 7.19, lng: 125.455 },
+  { label: 'Work', line: 'Digos City Hall, Rizal Ave, Digos City', landmark: 'Main entrance', lat: 6.7512, lng: 125.3556 },
+  { label: 'Other', line: 'Poblacion, Sta. Cruz, Davao del Sur (far)', landmark: "Lola's house", lat: 6.8337, lng: 125.4113 },
 ];
 
-export const SUB_LABEL: Record<SubstitutionPref, string> = { similar: 'Similar item', ask: 'Ask me', refund: 'Refund' };
-export const SUB_HELP: Record<SubstitutionPref, string> = {
-  similar: 'Picker may replace it with a similar item',
-  ask: 'We will ask you before replacing',
-  refund: 'Remove and refund if unavailable',
-};
+/** Branch area used as the default map pin (Digos City). */
+export const DIGOS_CENTER = { lat: 6.7497, lng: 125.3572 };
+
+/** Address used while browsing as a guest (prices and stock follow the nearest branch). */
+export const GUEST_ADDRESS: Address = { label: 'Other', line: 'Digos City, Davao del Sur', lat: DIGOS_CENTER.lat, lng: DIGOS_CENTER.lng };
+
+/** Phase 1: staff call the customer about unavailable items, so every line uses "ask". */
+export const DEFAULT_SUB_PREF: SubstitutionPref = 'ask';
+
+/** Ratings are a Phase 2 feature: shown only when a `ff_ratings` setting exists and is true. */
+export function ratingsOn(s: AppState, branchId: string) {
+  return getSetting(s, 'ff_ratings', branchId) === true;
+}
+
+export function meatMaxMins(s: AppState, branchId: string) {
+  return num(getSetting(s, 'meatMaxDeliveryMins', branchId)) || 60;
+}
+
+export const MEAT_CAT_IDS = ['cat-beef', 'cat-pork', 'cat-chicken'];
+
+/** Top-level categories with Beef, Pork and Chicken first. */
+export function orderedTopCategories(s: AppState) {
+  const tops = s.categories.filter((c) => !c.parentId).sort((a, b) => a.sort - b.sort);
+  const meat = MEAT_CAT_IDS.map((id) => tops.find((c) => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c);
+  return [...meat, ...tops.filter((c) => !meat.includes(c))];
+}
+
+// ---------- Meat helpers (weights, cuts, storage) ----------
+export const roundKg = (n: number) => Math.round(n * 4) / 4;
+export const fmtKg = (n: number) => `${Number(n.toFixed(2))} kg`;
+export const minKg = (p: Product) => p.minWeightKg ?? 0.25;
+export function defaultKg(p: Product) {
+  const ch = p.weightChoices ?? [];
+  if (ch.includes(1)) return 1;
+  return ch[0] ?? Math.max(minKg(p), p.estWeightKg ?? 1);
+}
+/** Estimated weight of a cart line (older lines may still use qty × est. weight per piece). */
+export function lineWeight(c: CartLine, p: Product) {
+  return c.weightKg ?? (p.estWeightKg ?? 1) * c.qty;
+}
+/** Active cut / preparation options offered for a product. */
+export function cutsFor(s: AppState, p: Product): CutOption[] {
+  return (p.cutOptionIds ?? []).map((id) => (s.cutOptions ?? []).find((c) => c.id === id)).filter((c): c is CutOption => !!c && c.active);
+}
+export function cutById(s: AppState, id?: string) {
+  return id ? (s.cutOptions ?? []).find((c) => c.id === id) : undefined;
+}
+/** Estimated line total — same formula as lineTotal(): weight × price/kg (or qty × price) + flat cut fee. */
+export function lineEst(p: Product, price: number, qtyOrKg: number, cutFee: number) {
+  return Math.round((price * qtyOrKg + cutFee) * 100) / 100;
+}
+export const isCold = (p?: Product) => p?.storage === 'fresh' || p?.storage === 'frozen';
+
+export function StorageBadge({ p, className }: { p: Product; className?: string }) {
+  if (p.storage !== 'fresh' && p.storage !== 'frozen') return null;
+  const frozen = p.storage === 'frozen';
+  return (
+    <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2 py-0.5', frozen ? 'bg-[#2a2322] text-white' : 'bg-[#f6ece4] text-[#7a4f31]', className)}>
+      <Snowflake className="w-3 h-3" /> {frozen ? 'Frozen' : 'Fresh, kept chilled'}
+    </span>
+  );
+}
 
 // ---------- Search (normalized includes + Levenshtein ≤ 1 per word) ----------
 export function norm(t: string) {
@@ -116,89 +240,167 @@ export function popularity(s: AppState) {
   return m;
 }
 
-/** Estimated price of one cart unit (weighted items: price/kg × est. weight). */
-export function unitEst(p: Product, price: number) {
-  return p.soldByWeight ? Math.round(price * (p.estWeightKg ?? 1) * 100) / 100 : price;
-}
+// ---------- Cart (a line is keyed by product + cut) ----------
+export const lineKey = (c: { productId: string; cutId?: string }) => `${c.productId}|${c.cutId ?? ''}`;
 
-// ---------- Cart ----------
-export function cartAdd(productId: string, qty = 1, extra?: { note?: string; subPref?: SubstitutionPref }) {
+/** Add to cart; the same product + cut merges into one line (weights or quantities add up). */
+export function cartAdd(add: { productId: string; qty?: number; weightKg?: number; cutId?: string; note?: string }) {
   mutate((d) => {
-    const l = d.cart.find((c) => c.productId === productId);
+    const p = d.products.find((x) => x.id === add.productId);
+    const weighted = !!p?.soldByWeight;
+    const key = lineKey(add);
+    const l = d.cart.find((c) => lineKey(c) === key);
     if (l) {
-      l.qty += qty;
-      if (extra?.note !== undefined) l.note = extra.note;
-      if (extra?.subPref) l.subPref = extra.subPref;
-    } else d.cart.push({ productId, qty, note: extra?.note, subPref: extra?.subPref ?? 'similar' });
-  });
-}
-export function cartSet(productId: string, qty: number) {
-  mutate((d) => {
-    if (qty <= 0) d.cart = d.cart.filter((c) => c.productId !== productId);
-    else {
-      const l = d.cart.find((c) => c.productId === productId);
-      if (l) l.qty = qty;
+      if (weighted) l.weightKg = roundKg((l.weightKg ?? (p?.estWeightKg ?? 1) * l.qty) + (add.weightKg ?? 0));
+      else l.qty += add.qty ?? 1;
+      if (weighted) l.qty = 1;
+      if (add.note !== undefined) l.note = add.note;
+    } else {
+      d.cart.push({
+        productId: add.productId, qty: weighted ? 1 : add.qty ?? 1, weightKg: weighted ? roundKg(add.weightKg ?? (p ? defaultKg(p) : 1)) : undefined,
+        cutId: add.cutId, note: add.note, subPref: DEFAULT_SUB_PREF,
+      });
     }
   });
 }
-export function cartPatch(productId: string, patch: { note?: string; subPref?: SubstitutionPref }) {
+
+/** Change a line. A new cut changes the key: if that line already exists, the two merge. qty ≤ 0 removes it. */
+export function cartUpdate(key: string, patch: { qty?: number; weightKg?: number; cutId?: string | null; note?: string }) {
   mutate((d) => {
-    const l = d.cart.find((c) => c.productId === productId);
-    if (l) Object.assign(l, patch);
+    const l = d.cart.find((c) => lineKey(c) === key);
+    if (!l) return;
+    if (patch.qty !== undefined && patch.qty <= 0) { d.cart = d.cart.filter((c) => c !== l); return; }
+    if (patch.qty !== undefined) l.qty = patch.qty;
+    if (patch.weightKg !== undefined) { l.weightKg = roundKg(patch.weightKg); l.qty = 1; }
+    if ('note' in patch) l.note = patch.note || undefined;
+    if (patch.cutId !== undefined) {
+      const cutId = patch.cutId ?? undefined;
+      const other = d.cart.find((c) => c !== l && lineKey(c) === lineKey({ productId: l.productId, cutId }));
+      if (other) {
+        if (l.weightKg !== undefined) other.weightKg = roundKg((other.weightKg ?? 0) + l.weightKg);
+        else other.qty += l.qty;
+        d.cart = d.cart.filter((c) => c !== l);
+      } else l.cutId = cutId;
+    }
   });
 }
+export function cartRemove(key: string) {
+  mutate((d) => { d.cart = d.cart.filter((c) => lineKey(c) !== key); });
+}
 
-// ---------- UI atoms ----------
-export function ScreenHeader({ title, sub, right, onBack }: { title: React.ReactNode; sub?: React.ReactNode; right?: React.ReactNode; onBack?: () => void }) {
-  const { back, canGoBack } = useShop();
-  const showBack = onBack || canGoBack;
+// ---------- Layout atoms ----------
+/** Centered content column (max ~1200px). */
+export function Container({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn('mx-auto w-full max-w-[1200px] px-4 md:px-6', className)}>{children}</div>;
+}
+
+/**
+ * Page title row. On phones it shows a back button (browser back, or `back` when there is no history);
+ * pass `back={false}` on top-level pages (tabs).
+ */
+export function ScreenHeader({ title, sub, right, back = '/' }: { title: React.ReactNode; sub?: React.ReactNode; right?: React.ReactNode; back?: string | false }) {
+  const { back: goBack } = useShop();
   return (
-    <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-gray-100 px-3 h-14 flex items-center gap-2">
-      {showBack && (
-        <button onClick={onBack ?? back} className="w-9 h-9 -ml-1 rounded-full flex items-center justify-center hover:bg-gray-100 active:bg-gray-200" aria-label="Back">
-          <ChevronLeft className="w-5 h-5 text-gray-800" strokeWidth={2} />
+    <div className="flex items-center gap-2 pt-3 pb-3 md:pt-8 md:pb-5">
+      {back !== false && (
+        <button onClick={() => goBack(back)} className="md:hidden w-11 h-11 -ml-2.5 rounded-full flex items-center justify-center active:bg-black/5" aria-label="Back">
+          <ChevronLeft className="w-6 h-6 text-[#2a2322]" strokeWidth={2} />
         </button>
       )}
-      <div className={cn('flex-1 min-w-0', !showBack && 'pl-1')}>
-        <p className="text-[15px] font-semibold text-gray-900 truncate leading-tight">{title}</p>
-        {sub && <p className="text-[11px] text-gray-500 truncate">{sub}</p>}
+      <div className="flex-1 min-w-0">
+        <h1 className="font-display uppercase tracking-wide text-[22px] md:text-3xl font-semibold text-[#2a2322] leading-tight truncate">{title}</h1>
+        {sub && <p className="text-xs md:text-sm text-gray-500 truncate">{sub}</p>}
       </div>
       {right}
     </div>
   );
 }
 
-export function Stepper({ qty, onChange, max, size = 'md' }: { qty: number; onChange: (n: number) => void; max?: number; size?: 'sm' | 'md' }) {
-  const b = size === 'sm' ? 'w-7 h-7' : 'w-9 h-9';
+/** Section heading inside a page ("Featured cuts"). */
+export function SectionTitle({ children, action, className }: { children: React.ReactNode; action?: React.ReactNode; className?: string }) {
   return (
-    <div className="inline-flex items-center bg-[#1e40af] text-white rounded-full shadow-sm">
-      <button onClick={(e) => { e.stopPropagation(); onChange(qty - 1); }} className={cn(b, 'flex items-center justify-center rounded-full active:bg-white/20')} aria-label="Decrease">
-        <Minus className="w-3.5 h-3.5" strokeWidth={2.5} />
+    <div className={cn('flex items-end justify-between gap-3 mt-8 mb-3', className)}>
+      <h2 className="font-display uppercase tracking-wide text-lg md:text-2xl font-semibold text-[#2a2322] leading-tight flex items-center gap-2">
+        <span className="w-1.5 h-5 md:h-6 rounded-full bg-[#c8151d]" aria-hidden />
+        {children}
+      </h2>
+      {action}
+    </div>
+  );
+}
+
+/** Large emoji on a warm tinted tile — the demo's "product photo". */
+export function ProductImage({ emoji, className, size = 'md' }: { emoji: string; className?: string; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
+  const text = size === 'sm' ? 'text-3xl' : size === 'lg' ? 'text-7xl' : size === 'xl' ? 'text-[110px] md:text-[150px]' : 'text-5xl md:text-6xl';
+  if (isPhoto(emoji)) {
+    return (
+      <div className={cn('relative overflow-hidden bg-[#f8e7da]', className)}>
+        <PhotoImg image={emoji} fill />
+      </div>
+    );
+  }
+  return (
+    <div className={cn('relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-[#fdf4ed] via-[#f8e7da] to-[#efd2bd]', className)}>
+      <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.75),transparent_60%)]" aria-hidden />
+      <span className={cn('relative leading-none drop-shadow-[0_8px_10px_rgba(42,35,34,0.22)]', text)} aria-hidden>{emoji}</span>
+    </div>
+  );
+}
+
+export function Stepper({ qty, onChange, max, size = 'md', className }: { qty: number; onChange: (n: number) => void; max?: number; size?: 'sm' | 'md'; className?: string }) {
+  const b = size === 'sm' ? 'w-11 h-11 md:w-9 md:h-9' : 'w-11 h-11';
+  return (
+    <div className={cn('inline-flex items-center justify-between bg-[#c8151d] text-white rounded-full shadow-sm', className)}>
+      <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); onChange(qty - 1); }} className={cn(b, 'flex items-center justify-center rounded-full hover:bg-white/15 active:bg-white/25')} aria-label="Decrease">
+        <Minus className="w-4 h-4" strokeWidth={2.5} />
       </button>
-      <span className={cn('font-semibold text-center tabular-nums', size === 'sm' ? 'text-xs min-w-4' : 'text-sm min-w-6')}>{qty}</span>
+      <span className="font-semibold text-center tabular-nums text-sm min-w-6">{qty}</span>
       <button
-        onClick={(e) => { e.stopPropagation(); if (max === undefined || qty < max) onChange(qty + 1); }}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (max === undefined || qty < max) onChange(qty + 1); }}
         disabled={max !== undefined && qty >= max}
-        className={cn(b, 'flex items-center justify-center rounded-full active:bg-white/20 disabled:opacity-40')}
+        className={cn(b, 'flex items-center justify-center rounded-full hover:bg-white/15 active:bg-white/25 disabled:opacity-40')}
         aria-label="Increase"
       >
-        <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+        <Plus className="w-4 h-4" strokeWidth={2.5} />
       </button>
     </div>
   );
 }
 
-/** Bottom sheet rendered inside the phone (not a page-level portal). */
+/** − 1.5 kg + control (0.25 kg steps, never below the product minimum). */
+export function WeightStepper({ kg, min, onChange, size = 'md' }: { kg: number; min: number; onChange: (kg: number) => void; size?: 'sm' | 'md' }) {
+  const b = size === 'sm' ? 'w-11 h-11 md:w-9 md:h-9' : 'w-11 h-11';
+  return (
+    <div className="inline-flex items-center bg-[#c8151d] text-white rounded-full shadow-sm">
+      <button type="button" onClick={(e) => { e.stopPropagation(); onChange(Math.max(min, roundKg(kg - 0.25))); }} disabled={kg <= min} className={cn(b, 'flex items-center justify-center rounded-full hover:bg-white/15 active:bg-white/25 disabled:opacity-40')} aria-label="Less weight">
+        <Minus className="w-4 h-4" strokeWidth={2.5} />
+      </button>
+      <span className="font-semibold text-center tabular-nums whitespace-nowrap text-sm min-w-14">{fmtKg(kg)}</span>
+      <button type="button" onClick={(e) => { e.stopPropagation(); onChange(roundKg(kg + 0.25)); }} className={cn(b, 'flex items-center justify-center rounded-full hover:bg-white/15 active:bg-white/25')} aria-label="More weight">
+        <Plus className="w-4 h-4" strokeWidth={2.5} />
+      </button>
+    </div>
+  );
+}
+
+/** Bottom sheet on phones, centered dialog on tablet/desktop. */
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: React.ReactNode; children: React.ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end">
-      <div className="absolute inset-0 bg-black/40 fm-fade" onClick={onClose} />
-      <div className="relative bg-white rounded-t-3xl max-h-[85%] flex flex-col fm-sheet-up shadow-2xl">
-        <div className="flex justify-center pt-2"><span className="w-10 h-1 rounded-full bg-gray-300" /></div>
-        <div className="flex items-center justify-between px-5 pt-2 pb-3">
-          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center" aria-label="Close"><X className="w-4 h-4" /></button>
+    <div className="fixed inset-0 z-50 flex flex-col justify-end md:justify-center md:items-center md:p-6" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/45 fm-fade" onClick={onClose} />
+      <div className="relative bg-white rounded-t-3xl md:rounded-3xl w-full md:max-w-lg max-h-[88dvh] flex flex-col fm-sheet-up shadow-2xl pb-[env(safe-area-inset-bottom)]">
+        <div className="flex justify-center pt-2 md:hidden"><span className="w-10 h-1 rounded-full bg-gray-300" /></div>
+        <div className="flex items-center justify-between gap-3 px-5 pt-2 pb-3 md:pt-5">
+          <h3 className="font-display uppercase tracking-wide text-lg font-semibold text-[#2a2322]">{title}</h3>
+          <button onClick={onClose} className="w-11 h-11 -mr-2 rounded-full hover:bg-gray-100 flex items-center justify-center" aria-label="Close"><X className="w-5 h-5" /></button>
         </div>
         <div className="overflow-y-auto px-5 pb-6">{children}</div>
       </div>
@@ -206,47 +408,68 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   );
 }
 
-export function SectionTitle({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+/**
+ * Sticky action bar for phones ("Add to cart", "Checkout"). It sits above the bottom tab bar
+ * (via the --tabbar-h variable set by the shop layout) and leaves a spacer so content is not hidden.
+ */
+export function MobileActionBar({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between px-4 mt-5 mb-2">
-      <h3 className="text-[15px] font-semibold text-gray-900">{children}</h3>
-      {action}
-    </div>
+    <>
+      <div className="h-24 md:hidden" aria-hidden />
+      <div className="md:hidden fixed inset-x-0 z-30 bottom-[var(--tabbar-h,0px)] bg-white/95 backdrop-blur border-t border-[#eadfd6] px-4 pt-3 pb-[calc(0.75rem+var(--actionbar-safe,0px))] shadow-[0_-6px_20px_rgba(42,35,34,0.08)]">
+        {children}
+      </div>
+    </>
   );
 }
 
 export function ProductTile({ p, className }: { p: Product; className?: string }) {
-  const { s, branch, go, flash } = useShop();
+  const { s, branch, flash } = useShop();
   const info = getPriceInfo(s, p.id, branch.id);
   const avail = available(s, p.id, branch.id);
-  const line = s.cart.find((c) => c.productId === p.id);
+  const lines = s.cart.filter((c) => c.productId === p.id);
+  // Weighted meat and items with cut options need choices, so the button opens the product page.
+  const needsChoice = p.soldByWeight || cutsFor(s, p).length > 0;
+  const plainLine = !needsChoice ? lines.find((c) => !c.cutId) : undefined;
+  const inCart = p.soldByWeight ? lines.reduce((n, c) => n + lineWeight(c, p), 0) : lines.reduce((n, c) => n + c.qty, 0);
   const promo = !!info.compareAt && info.compareAt > info.price;
   const off = promo ? Math.round((1 - info.price / info.compareAt!) * 100) : 0;
+  const href = `/products/${p.id}`;
   return (
-    <div className={cn('bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col', className)}>
-      <button onClick={() => go({ name: 'product', id: p.id })} className="relative h-24 bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center text-5xl">
-        <span className="drop-shadow-sm">{p.image}</span>
-        {promo && <span className="absolute top-2 left-2 bg-[#dc2626] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md">-{off}%</span>}
-        {p.tags.includes('organic') && <span className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-md">Organic</span>}
-        {avail === 0 && <span className="absolute inset-0 bg-white/70 flex items-center justify-center text-[11px] font-semibold text-gray-600">Out of stock</span>}
-      </button>
-      <div className="p-2.5 flex-1 flex flex-col">
-        <p className="text-[10px] text-gray-400 truncate">{p.brand} · {p.size}</p>
-        <button onClick={() => go({ name: 'product', id: p.id })} className="text-left text-[13px] font-medium text-gray-900 leading-tight line-clamp-2 min-h-[2.3em]">{p.name}</button>
-        <div className="mt-auto pt-1.5 flex items-end justify-between gap-1">
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold text-[#1e40af] leading-none">{peso(info.price)}{p.soldByWeight && <span className="text-[10px] font-medium text-gray-500">/kg</span>}</p>
-            {promo && <p className="text-[10px] text-gray-400 line-through mt-0.5">{peso(info.compareAt!)}</p>}
-          </div>
-          {avail === 0 ? null : line ? (
-            <Stepper size="sm" qty={line.qty} max={avail} onChange={(n) => cartSet(p.id, n)} />
+    <div className={cn('group bg-white rounded-2xl border border-[#eadfd6] shadow-sm hover:shadow-md transition overflow-hidden flex flex-col min-w-0', className)}>
+      <Link href={href} className="relative block" aria-label={p.name}>
+        <ProductImage emoji={p.image} className="aspect-[4/3] group-hover:scale-[1.02] transition-transform" />
+        <span className="absolute top-2 left-2 flex flex-col items-start gap-1">
+          {promo && <span className="bg-[#c8151d] text-white text-[11px] font-bold px-1.5 py-0.5 rounded-md">−{off}%</span>}
+          {p.storage === 'fresh' && <span className="bg-[#ae754d] text-white text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md">Fresh cut</span>}
+          {p.storage === 'frozen' && <span className="bg-[#2a2322] text-white text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md">Frozen</span>}
+        </span>
+        {needsChoice && inCart > 0 && <span className="absolute bottom-2 right-2 bg-[#2a2322] text-white text-[11px] font-semibold px-1.5 py-0.5 rounded-md">{p.soldByWeight ? fmtKg(inCart) : `${inCart}`} in cart</span>}
+        {avail === 0 && <span className="absolute inset-0 bg-white/70 flex items-center justify-center text-xs font-semibold text-gray-700">Out of stock</span>}
+      </Link>
+      <div className="p-3 flex-1 flex flex-col">
+        <p className="text-[11px] text-gray-500 truncate">{p.soldByWeight ? 'Sold by weight' : `${p.brand} · ${p.size}`}</p>
+        <Link href={href} className="text-sm font-semibold text-[#2a2322] leading-snug line-clamp-2 min-h-[2.5em] hover:text-[#c8151d]">{p.name}</Link>
+        <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
+          <p className="text-[15px] font-bold text-[#c8151d] leading-none">{peso(info.price)}{p.soldByWeight && <span className="text-[11px] font-medium text-gray-500">/kg</span>}</p>
+          {promo && <p className="text-[11px] text-gray-400 line-through">{peso(info.compareAt!)}</p>}
+        </div>
+        <div className="mt-auto pt-3">
+          {avail === 0 ? (
+            <Link href={href} className="w-full h-11 md:h-9 rounded-full border border-gray-200 text-xs font-semibold text-gray-600 flex items-center justify-center">View details</Link>
+          ) : plainLine ? (
+            <Stepper size="sm" className="w-full" qty={plainLine.qty} max={avail} onChange={(n) => cartUpdate(lineKey(plainLine), { qty: n })} />
+          ) : needsChoice ? (
+            <Link href={href} className="w-full h-11 md:h-9 rounded-full bg-[#c8151d] hover:bg-[#a3111a] text-white text-xs font-semibold flex items-center justify-center gap-1">
+              {p.soldByWeight ? 'Choose weight' : 'Choose cut'}
+            </Link>
           ) : (
             <button
-              onClick={() => { cartAdd(p.id); flash(`${p.name} added to cart`); }}
-              className="w-7 h-7 shrink-0 rounded-full bg-[#1e40af] text-white flex items-center justify-center shadow-sm active:scale-95"
-              aria-label={`Add ${p.name}`}
+              onClick={() => { cartAdd({ productId: p.id, qty: 1 }); flash(`${p.name} added to cart`, 'ok', { label: 'View cart', href: '/cart' }); }}
+              className="w-full h-11 md:h-9 rounded-full bg-[#c8151d] hover:bg-[#a3111a] text-white text-xs font-semibold flex items-center justify-center gap-1"
+              aria-label={`Add ${p.name} to cart`}
             >
-              <Plus className="w-4 h-4" strokeWidth={2.5} />
+              <Plus className="w-4 h-4" strokeWidth={2.5} /> Add to cart
             </button>
           )}
         </div>
@@ -255,17 +478,36 @@ export function ProductTile({ p, className }: { p: Product; className?: string }
   );
 }
 
-export function HScroll({ children }: { children: React.ReactNode }) {
-  return <div className="flex gap-3 overflow-x-auto px-4 pb-1 snap-x fm-noscroll">{children}</div>;
+/** Product grid: 2 columns on phones, 3–5 on tablet/desktop. */
+export function ProductGrid({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn('grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4', className)}>{children}</div>;
+}
+
+/** A row of products: swipeable on phones, a grid on tablet/desktop. */
+export function ProductRow({ products, limit = 10 }: { products: Product[]; limit?: number }) {
+  return (
+    <div className="flex gap-3 overflow-x-auto snap-x -mx-4 px-4 pb-1 fm-noscroll md:mx-0 md:px-0 md:grid md:grid-cols-4 lg:grid-cols-5 md:gap-4 md:overflow-visible">
+      {products.slice(0, limit).map((p) => <ProductTile key={p.id} p={p} className="snap-start shrink-0 w-[46%] max-w-[190px] md:w-auto md:max-w-none" />)}
+    </div>
+  );
+}
+
+/** "Call the branch" link (Phase 1 replacement for in-app chat). */
+export function CallBranchButton({ branch, className, label = 'Call the branch' }: { branch: Branch; className?: string; label?: string }) {
+  return (
+    <a href={`tel:${branch.phone.replace(/[^\d+]/g, '')}`} className={cn('min-h-11 px-3 rounded-xl bg-white border border-gray-200 text-xs font-semibold text-gray-700 hover:border-[#c8151d] flex items-center justify-center gap-1.5 text-center', className)}>
+      <Phone className="w-4 h-4 text-[#c8151d] shrink-0" /> {label} · {branch.phone}
+    </a>
+  );
 }
 
 export function Card({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('bg-white rounded-2xl border border-gray-100 shadow-sm', className)}>{children}</div>;
+  return <div className={cn('bg-white rounded-2xl border border-[#eadfd6] shadow-sm', className)}>{children}</div>;
 }
 
-export function PrimaryButton({ children, onClick, disabled, className }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; className?: string }) {
+export function PrimaryButton({ children, onClick, disabled, className, type }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; className?: string; type?: 'button' | 'submit' }) {
   return (
-    <button onClick={onClick} disabled={disabled} className={cn('w-full h-12 rounded-2xl bg-[#1e40af] text-white font-semibold text-sm shadow-md shadow-blue-900/20 active:scale-[0.99] disabled:bg-gray-300 disabled:shadow-none transition', className)}>
+    <button type={type} onClick={onClick} disabled={disabled} className={cn('w-full h-12 rounded-full bg-[#c8151d] hover:bg-[#a3111a] text-white font-semibold text-sm shadow-md shadow-red-900/20 active:scale-[0.99] disabled:bg-gray-300 disabled:text-gray-600 disabled:shadow-none transition', className)}>
       {children}
     </button>
   );

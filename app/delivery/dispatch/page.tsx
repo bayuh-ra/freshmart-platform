@@ -8,11 +8,11 @@ import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
 import { AccessDenied, EmptyState, Panel, Pill, StatCard } from '@/src/components/common';
 import { MapView, type MapMarker } from '@/src/components/MapView';
 import { Button } from '@/src/components/ui/shadcn/button';
-import { addAudit, currentUserName, getState, mutate, useStore, useTick } from '@/src/lib/store';
-import { assignRider, branchName, can, cityName, getSetting, pesoShort, riderPosition } from '@/src/lib/logic';
+import { addAudit, currentUserName, getState, mutate, useStore } from '@/src/lib/store';
+import { assignRider, branchName, can, cityName, fmtTime, getSetting, pesoShort, riderPosition } from '@/src/lib/logic';
 import type { Order } from '@/src/lib/types';
 import { AssignRiderDialog } from '@/src/components/delivery/AssignRiderDialog';
-import { RIDER_TYPE_LABEL, liveRiderPos, minsSince, orderDistance, rankCandidates, workload } from '@/src/components/delivery/helpers';
+import { deliverBy, liveRiderPos, minsSince, orderDistance, ownRiders, rankCandidates, useNow, workload } from '@/src/components/delivery/helpers';
 
 const LATE_MINS = 40;
 
@@ -22,7 +22,7 @@ function readyAt(o: Order) {
 
 export default function DispatchPage() {
   const s = useStore();
-  useTick(1000);
+  const now = useNow(1000);
   const [assignFor, setAssignFor] = useState<Order | undefined>();
 
   if (!can(s, 'riders.view')) {
@@ -37,9 +37,9 @@ export default function DispatchPage() {
   const waiting = s.orders.filter((o) => o.fulfillment === 'delivery' && o.status === 'ready' && !o.riderId && cityBranchIds.includes(o.branchId));
   const assignedNotPicked = s.orders.filter((o) => o.fulfillment === 'delivery' && o.status === 'ready' && o.riderId && cityBranchIds.includes(o.branchId));
   const onRoad = s.orders.filter((o) => o.status === 'out_for_delivery' && cityBranchIds.includes(o.branchId));
-  const riders = s.riders.filter((r) => r.type !== 'courier' && r.branchIds.some((id) => cityBranchIds.includes(id)));
+  const riders = ownRiders(s).filter((r) => r.branchIds.some((id) => cityBranchIds.includes(id)));
   const online = riders.filter((r) => r.status === 'online');
-  const late = onRoad.filter((o) => minsSince(o.outForDeliveryAt) > LATE_MINS);
+  const late = onRoad.filter((o) => { const c = deliverBy(o, now); return c ? c.overdue : minsSince(o.outForDeliveryAt) > LATE_MINS; });
 
   const markers: MapMarker[] = [
     ...cityBranches.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, label: '🏪', color: '#dc2626', title: `${b.name} branch` })),
@@ -49,12 +49,12 @@ export default function DispatchPage() {
     })),
     ...online.map((r) => {
       const p = liveRiderPos(s, r);
-      return { id: r.id, lat: p.lat, lng: p.lng, label: '🛵', color: p.onJob ? '#1e40af' : '#16a34a', pulse: p.onJob, title: `${r.name} · ${p.onJob ? `On job${p.order ? ` ${p.order.number}` : ''}` : 'Available'}` };
+      return { id: r.id, lat: p.lat, lng: p.lng, label: '🛵', color: p.onJob ? '#c8151d' : '#16a34a', pulse: p.onJob, title: `${r.name} · ${p.onJob ? `On job${p.order ? ` ${p.order.number}` : ''}` : 'Available'}` };
     }),
   ];
   const lines = onRoad.filter((o) => o.address).map((o) => {
     const p = riderPosition(s, o);
-    return { points: [[p.lat, p.lng], [o.address!.lat, o.address!.lng]] as [number, number][], color: '#1e40af', dashed: true };
+    return { points: [[p.lat, p.lng], [o.address!.lat, o.address!.lng]] as [number, number][], color: '#c8151d', dashed: true };
   });
 
   const autoDispatch = () => {
@@ -88,23 +88,23 @@ export default function DispatchPage() {
         <StatCard title="Riders online" value={online.length} sub={`${riders.length} riders in ${cityName(s, branch.cityId)}`} icon={<Bike className="w-5 h-5" strokeWidth={1.75} />} />
         <StatCard title="On a job" value={online.filter((r) => workload(s, r.id) > 0).length} sub="Pulsing on the map" accent="border-l-indigo-500" icon={<Navigation className="w-5 h-5" strokeWidth={1.75} />} />
         <StatCard title="Waiting for rider" value={waiting.length} sub="Ready, not yet assigned" accent="border-l-amber-500" valueClass={waiting.length ? 'text-amber-600' : undefined} icon={<PackageCheck className="w-5 h-5" strokeWidth={1.75} />} />
-        <StatCard title="Delayed" value={late.length} sub={`Out for delivery > ${LATE_MINS} min`} accent="border-l-[#dc2626]" valueClass={late.length ? 'text-[#dc2626]' : undefined} icon={<AlertTriangle className="w-5 h-5" strokeWidth={1.75} />} />
+        <StatCard title="Delayed" value={late.length} sub={`Past cold-chain limit or > ${LATE_MINS} min`} accent="border-l-[#dc2626]" valueClass={late.length ? 'text-[#dc2626]' : undefined} icon={<AlertTriangle className="w-5 h-5" strokeWidth={1.75} />} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px] gap-6">
         <Panel
           title={<div><h2 className="text-base font-semibold text-gray-900">Live map · {cityName(s, branch.cityId)}</h2><p className="text-xs text-gray-500">Positions refresh every second</p></div>}
           action={
             <div className="hidden md:flex items-center gap-3 text-xs text-gray-500">
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-600" /> Available</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#1e40af]" /> On job</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#c8151d]" /> On job</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Waiting drop-off</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-violet-600" /> Assigned drop-off</span>
             </div>
           }
           bodyClass="p-3"
         >
-          <MapView key={branch.cityId} center={[branch.lat, branch.lng]} zoom={13} markers={markers} lines={lines} className="h-[560px]" />
+          <MapView key={branch.cityId} center={[branch.lat, branch.lng]} zoom={13} markers={markers} lines={lines} className="h-[340px] sm:h-[560px]" />
         </Panel>
 
         <div className="space-y-6">
@@ -125,6 +125,7 @@ export default function DispatchPage() {
                         <p className="text-sm font-semibold text-gray-900">
                           <Link href={`/orders/${o.id}`} className="hover:underline">{o.number}</Link>
                           <span className="font-normal text-gray-500"> · {branchName(s, o.branchId)}</span>
+                          {o.coldChain && <Pill className="ml-1.5 bg-sky-50 text-sky-700">❄️ {o.maxDeliveryMins ? `${o.maxDeliveryMins} min max` : 'Cold chain'}</Pill>}
                         </p>
                         <p className="text-xs text-gray-500 truncate">{o.customerName} · {o.address?.line} · {orderDistance(s, o)} km</p>
                         <p className={`text-xs mt-0.5 ${wait > 10 ? 'text-[#dc2626] font-medium' : 'text-gray-400'}`}>
@@ -164,28 +165,34 @@ export default function DispatchPage() {
                   const r = s.riders.find((x) => x.id === o.riderId);
                   const p = riderPosition(s, o);
                   const mins = minsSince(o.outForDeliveryAt);
-                  const isLate = mins > LATE_MINS;
+                  const cold = deliverBy(o, now);
+                  const isLate = cold ? cold.overdue : mins > LATE_MINS;
                   return (
                     <li key={o.id} className={`px-5 py-3 ${isLate ? 'bg-red-50/60' : ''}`}>
                       <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">
                             {o.number} <span className="font-normal text-gray-500">· {r?.name ?? 'Unassigned'}</span>
-                            {r && <Pill className="ml-1.5 bg-gray-100">{RIDER_TYPE_LABEL[r.type]}</Pill>}
+                            {o.coldChain && <Pill className="ml-1.5 bg-sky-50 text-sky-700">❄️ Cold chain</Pill>}
                           </p>
                           <p className="text-xs text-gray-500 truncate">{o.customerName} · {o.address?.line}</p>
+                          {cold && (
+                            <p className={`text-xs mt-0.5 font-medium ${cold.overdue ? 'text-[#dc2626]' : 'text-sky-700'}`}>
+                              Deliver by {fmtTime(cold.due)} ({cold.overdue ? `${-cold.minsLeft} min overdue` : `${cold.minsLeft} min left`})
+                            </p>
+                          )}
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-bold text-[#1e40af]">ETA {p.etaMins} min</p>
+                          <p className="text-sm font-bold text-[#c8151d]">ETA {p.etaMins} min</p>
                           <p className="text-[11px] text-gray-400">{mins} min out</p>
                         </div>
                       </div>
                       <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                        <div className={`h-full ${isLate ? 'bg-[#dc2626]' : 'bg-[#1e40af]'} transition-all`} style={{ width: `${Math.round(p.progress * 100)}%` }} />
+                        <div className={`h-full ${isLate ? 'bg-[#dc2626]' : 'bg-[#c8151d]'} transition-all`} style={{ width: `${Math.round(p.progress * 100)}%` }} />
                       </div>
                       <div className="mt-2 flex items-center gap-2">
                         {isLate && (
-                          <span className="text-xs text-[#dc2626] font-medium flex items-center gap-1 mr-auto"><AlertTriangle className="w-3.5 h-3.5" /> Delayed — past {LATE_MINS} min target</span>
+                          <span className="text-xs text-[#dc2626] font-medium flex items-center gap-1 mr-auto"><AlertTriangle className="w-3.5 h-3.5" /> Delayed — past {cold ? `${o.maxDeliveryMins} min cold-chain limit` : `${LATE_MINS} min target`}</span>
                         )}
                         <div className="ml-auto flex gap-1">
                           {isLate && <Button size="sm" variant="outline" onClick={() => alertLate(o)}>Follow up</Button>}
@@ -205,7 +212,7 @@ export default function DispatchPage() {
                 const load = workload(s, r.id);
                 return (
                   <li key={r.id} className="px-5 py-2.5 flex items-center gap-3 text-sm">
-                    <span className={`w-2.5 h-2.5 rounded-full ${r.status !== 'online' ? 'bg-gray-300' : load ? 'bg-[#1e40af]' : 'bg-green-600'}`} />
+                    <span className={`w-2.5 h-2.5 rounded-full ${r.status !== 'online' ? 'bg-gray-300' : load ? 'bg-[#c8151d]' : 'bg-green-600'}`} />
                     <span className="flex-1 font-medium text-gray-800 truncate">{r.name}</span>
                     <span className="text-xs text-gray-500">{r.status !== 'online' ? r.status : load ? `${load} job${load > 1 ? 's' : ''}` : 'Available'}</span>
                   </li>

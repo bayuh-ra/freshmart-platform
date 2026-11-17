@@ -7,9 +7,9 @@
    are expressed as CSS custom properties + arbitrary-value
    Tailwind classes throughout the codebase, not a JS theme object.
    Palette:
-     royalBlue     #1e40af  primary (buttons, links, active nav)
-     royalBlueDeep #1e3a8a  primary hover / dark variant
-     royalBlueLight#2563eb  accent / gradient partner for primary
+     royalBlue     #c8151d  primary (buttons, links, active nav)
+     royalBlueDeep #a3111a  primary hover / dark variant
+     royalBlueLight#ec1b26  accent / gradient partner for primary
      red           #dc2626  secondary brand ("Lap IT red")
      redDeep       #b91c1c  red hover
      cyan          #06b6d4  info
@@ -19,13 +19,18 @@
    ============================================================ */
 
 :root {
-  --background: #fafafa;
+  --background: #faf7f5;
   --foreground: #0f0f1a;
 
-  --color-royal-blue: #1e40af;
-  --color-royal-blue-deep: #1e3a8a;
-  --color-royal-blue-light: #2563eb;
+  --color-royal-blue: #c8151d; /* Jovanne’s red (name kept for compatibility) */
+  --color-royal-blue-deep: #a3111a;
+  --color-royal-blue-light: #ec1b26;
   --color-lap-red: #dc2626;
+  --color-brand-red: #ec1b26;
+  --color-brand-charcoal: #2a2322;
+  --color-brand-charcoal-soft: #372e2f;
+  --color-brand-copper: #ae754d;
+  --color-brand-cream: #faf6f2;
   --color-lap-red-deep: #b91c1c;
   --color-cyan: #06b6d4;
   --color-emerald: #10b981;
@@ -55,7 +60,7 @@
   --card-foreground: var(--foreground);
   --popover: #ffffff;
   --popover-foreground: var(--foreground);
-  --primary: #1e40af;
+  --primary: #c8151d;
   --primary-foreground: #ffffff;
   --secondary: #f3f4f6;
   --secondary-foreground: #111827;
@@ -67,14 +72,14 @@
   --destructive-foreground: #ffffff;
   --border: #e5e7eb;
   --input: #e5e7eb;
-  --ring: #1e40af;
+  --ring: #c8151d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter);
-  --font-display: var(--font-ibm-plex-sans);
+  --font-display: var(--font-oswald);
 
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -124,8 +129,8 @@ input, textarea, select {
    brand focus treatment instead of Tailwind's default ring. */
 .focus-glow:focus {
   outline: none;
-  box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.12);
-  border-color: #1e40af;
+  box-shadow: 0 0 0 4px rgba(200, 21, 29, 0.12);
+  border-color: #c8151d;
 }
 
 /* Custom scrollbar — 10px, transparent track, rounded thumb with a

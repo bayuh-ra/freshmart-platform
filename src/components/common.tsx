@@ -9,16 +9,16 @@ import type { OrderStatus, PaymentStatus } from '@/src/lib/types';
 import { STATUS_CLASS, STATUS_LABEL } from '@/src/lib/logic';
 import { cn } from '@/src/lib/utils';
 
-export function StatCard({ title, value, sub, href, accent = 'border-l-[#1e40af]', valueClass, icon }: {
+export function StatCard({ title, value, sub, href, accent = 'border-l-[#c8151d]', valueClass, icon }: {
   title: string; value: React.ReactNode; sub?: React.ReactNode; href?: string; accent?: string; valueClass?: string; icon?: React.ReactNode;
 }) {
   const inner = (
-    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow border-l-4 h-full', accent)}>
+    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5 hover:shadow-md transition-shadow border-l-4 h-full min-w-0', accent)}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium text-gray-500">{title}</p>
-        {icon && <span className="text-gray-300">{icon}</span>}
+        <p className="text-xs sm:text-sm font-medium text-gray-500">{title}</p>
+        {icon && <span className="text-gray-300 hidden sm:inline">{icon}</span>}
       </div>
-      <p className={cn('text-3xl font-bold mt-2', valueClass ?? 'text-[#1e40af]')}>{value}</p>
+      <p className={cn('text-xl sm:text-3xl font-bold mt-2 break-words', valueClass ?? 'text-[#c8151d]')}>{value}</p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
     </div>
   );
@@ -31,12 +31,12 @@ export function Panel({ title, action, children, className, bodyClass }: {
   return (
     <section className={cn('bg-white rounded-xl shadow-sm border border-gray-100', className)}>
       {(title || action) && (
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
           {typeof title === 'string' ? <h2 className="text-base font-semibold text-gray-900">{title}</h2> : title}
           {action}
         </div>
       )}
-      <div className={cn('p-5', bodyClass)}>{children}</div>
+      <div className={cn('p-5 min-w-0', bodyClass)}>{children}</div>
     </section>
   );
 }
@@ -86,10 +86,10 @@ export function Toolbar({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-wrap items-center gap-2 mb-4">{children}</div>;
 }
 
-export const inputClass = 'h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm focus-glow outline-none';
-export const selectClass = 'h-9 rounded-lg border border-gray-300 bg-white px-2 text-sm focus-glow outline-none';
+export const inputClass = 'h-9 max-w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus-glow outline-none';
+export const selectClass = 'h-9 max-w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 text-sm focus-glow outline-none';
 
-/** Phone-shaped frame for the Shopper App / Rider App previews. */
+/** Phone-shaped frame for the Customer App / Rider App previews. */
 export function PhoneFrame({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('relative mx-auto w-[390px] h-[800px] max-h-[calc(100vh-2rem)] rounded-[44px] bg-[#0f0f1a] p-3 shadow-2xl', className)}>

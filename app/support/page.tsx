@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
-  Search, Send, Smile, MessageSquareText, StickyNote, Undo2, Ticket, Truck, XCircle, ArrowUpCircle, Star, Phone, Wallet, Ban, Inbox, Tag, Plus, X, ExternalLink, UserRound,
+  ChevronLeft, Search, Send, Smile, MessageSquareText, StickyNote, Undo2, Ticket, Truck, XCircle, ArrowUpCircle, Star, Phone, Wallet, Ban, Inbox, Tag, Plus, X, ExternalLink, UserRound,
 } from 'lucide-react';
 import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
 import { AccessDenied, Pill, StatusBadge, PaymentBadge, EmptyState, inputClass, selectClass } from '@/src/components/common';
@@ -16,18 +16,22 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/src/components/ui/shadcn/dropdown-menu';
 import { CancelOrderDialog, ConversationX, RedeliverDialog, RefundDialog, VoucherSendDialog, pushMessage } from '@/src/components/support/actions';
+import { useNow } from '@/src/components/reports/ui';
 import { cn } from '@/src/lib/utils';
+import { ProductImage } from '@/src/components/ProductImage';
 
 type StatusFilter = 'open' | 'pending' | 'resolved' | 'all';
 const CATEGORIES: Conversation['category'][] = ['Missing item', 'Damaged item', 'Late delivery', 'Payment issue', 'Rider behavior', 'Other'];
-const EMOJIS = ['😊', '🙏', '👍', '🙂', '😔', '🎉', '❤️', '🛒', '🚚', '✅', '⏱️', '🥬'];
+const EMOJIS = ['😊', '🙏', '👍', '🙂', '😔', '🎉', '❤️', '🥩', '🚚', '✅', '⏱️', '🧊'];
 const SAVED_REPLIES = [
-  { title: 'Greeting', text: 'Hi {name}! Thanks for reaching out to FreshMart support. Let me check this for you right away.' },
+  { title: 'Greeting', text: 'Hi {name}! Thanks for reaching out to Jovanne’s Meat Shop. Let me check this for you right away.' },
+  { title: 'Not cold on arrival', text: "Sorry the meat didn't arrive cold, {name}. Please put it in the fridge now and send us a photo — we'll replace or refund it today." },
+  { title: 'Wrong cut', text: "Sorry we got the cut wrong, {name}. Tell us how you wanted it prepared and we'll send a replacement or refund the item." },
   { title: 'Missing item — refund', text: "Sorry about the missing item, {name}. I've processed a refund for it to your store credit — you can use it on your next order." },
   { title: 'Damaged item', text: 'So sorry the item arrived damaged. Could you send a quick photo so we can file a quality report with the branch?' },
   { title: 'Late delivery', text: 'Apologies for the delay, {name}. Your rider is on the way — you can follow them live on the tracking map in the app.' },
   { title: 'Payment double charge', text: "I can see the duplicate charge. The second payment will be reversed by the payment provider within 3–7 banking days. We'll keep you updated." },
-  { title: 'Closing', text: 'Is there anything else I can help you with today? Have a great day! 🥬' },
+  { title: 'Closing', text: 'Is there anything else I can help you with today? Have a great day! 🥩' },
 ];
 const TAG_OPTIONS = ['refund', 'quality', 'rider', 'repeat-issue', 'vip', 'gcash', 'cold-chain'];
 
@@ -95,9 +99,10 @@ export default function SupportPage() {
 
   return (
     <DashboardLayout title="Support Inbox" eyebrow="Customer Care" hideBranch>
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] xl:grid-cols-[320px_1fr_340px] gap-4 h-[calc(100vh-8.5rem)] min-h-[560px]">
+      {/* Phones/tablets (< lg): one pane at a time — the list, or the open thread with a Back button. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_340px] gap-4 h-[calc(100dvh-5.5rem)] sm:h-[calc(100dvh-7rem)] md:h-[calc(100vh-8.5rem)] min-h-[460px] md:min-h-[560px]">
         {/* ---------------- Left: conversation list ---------------- */}
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col min-h-0">
+        <section className={cn('bg-white rounded-xl shadow-sm border border-gray-100 flex-col min-h-0', selected ? 'hidden lg:flex' : 'flex')}>
           <div className="p-3 border-b border-gray-100 space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-gray-900">Conversations</h2>
@@ -109,7 +114,7 @@ export default function SupportPage() {
             </div>
             <div className="grid grid-cols-4 gap-1 rounded-lg bg-gray-50 p-0.5">
               {(['open', 'pending', 'resolved', 'all'] as StatusFilter[]).map((st) => (
-                <button key={st} onClick={() => setStatus(st)} className={cn('rounded-md py-1 text-xs font-medium capitalize', status === st ? 'bg-white shadow-sm text-[#1e40af]' : 'text-gray-500 hover:text-gray-700')}>
+                <button key={st} onClick={() => setStatus(st)} className={cn('rounded-md py-1 text-xs font-medium capitalize', status === st ? 'bg-white shadow-sm text-[#c8151d]' : 'text-gray-500 hover:text-gray-700')}>
                   {st} <span className="text-gray-400">{count(st)}</span>
                 </button>
               ))}
@@ -125,7 +130,7 @@ export default function SupportPage() {
               </select>
             </div>
             <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input type="checkbox" className="accent-[#1e40af]" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Assigned to me ({me})
+              <input type="checkbox" className="accent-[#c8151d]" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Assigned to me ({me})
             </label>
           </div>
           <ul className="flex-1 overflow-y-auto divide-y divide-gray-50">
@@ -134,7 +139,7 @@ export default function SupportPage() {
               const order = s.orders.find((o) => o.id === c.orderId);
               return (
                 <li key={c.id}>
-                  <button onClick={() => setSelectedId(c.id)} className={cn('w-full text-left px-3 py-3 hover:bg-gray-50 transition-colors border-l-2', selectedId === c.id ? 'bg-blue-50/60 border-l-[#1e40af]' : 'border-l-transparent')}>
+                  <button onClick={() => setSelectedId(c.id)} className={cn('w-full text-left px-3 py-3 hover:bg-gray-50 transition-colors border-l-2', selectedId === c.id ? 'bg-red-50/60 border-l-[#c8151d]' : 'border-l-transparent')}>
                     <div className="flex items-center gap-2">
                       <span className={cn('w-2 h-2 rounded-full shrink-0', c.priority === 'high' ? 'bg-[#dc2626]' : c.priority === 'normal' ? 'bg-amber-400' : 'bg-gray-300')} title={`${c.priority} priority`} />
                       <span className={cn('text-sm truncate flex-1', c.unreadStaff ? 'font-semibold text-gray-900' : 'font-medium text-gray-700')}>{c.customerName}</span>
@@ -142,14 +147,14 @@ export default function SupportPage() {
                     </div>
                     <div className="flex items-center gap-1.5 mt-1 pl-4">
                       <span className="text-[11px] text-gray-500">{c.category}</span>
-                      {order && <span className="text-[11px] text-[#1e40af]">· {order.number}</span>}
+                      {order && <span className="text-[11px] text-[#c8151d]">· {order.number}</span>}
                       {c.escalated && <span className="text-[11px] text-[#dc2626] font-medium">· Escalated</span>}
                     </div>
                     <div className="flex items-center gap-2 mt-1 pl-4">
                       <p className={cn('text-xs truncate flex-1', c.unreadStaff ? 'text-gray-800' : 'text-gray-400')}>
                         {last?.internal ? '📝 ' : last?.from === 'agent' ? 'You: ' : ''}{last?.text}
                       </p>
-                      {c.unreadStaff > 0 && <span className="rounded-full bg-[#1e40af] text-white text-[10px] font-semibold min-w-5 h-5 px-1.5 flex items-center justify-center">{c.unreadStaff}</span>}
+                      {c.unreadStaff > 0 && <span className="rounded-full bg-[#c8151d] text-white text-[10px] font-semibold min-w-5 h-5 px-1.5 flex items-center justify-center">{c.unreadStaff}</span>}
                     </div>
                   </button>
                 </li>
@@ -160,9 +165,9 @@ export default function SupportPage() {
         </section>
 
         {/* ---------------- Middle: thread ---------------- */}
-        {selected ? <Thread key={selected.id} s={s} conv={selected} /> : (
-          <section className="bg-white rounded-xl shadow-sm border border-gray-100 flex items-center justify-center xl:col-span-2">
-            <EmptyState title="Select a conversation" sub="Messages from the Shopper App appear here in real time" icon={<MessageSquareText className="w-10 h-10" />} />
+        {selected ? <Thread key={selected.id} s={s} conv={selected} onBack={() => setSelectedId(null)} /> : (
+          <section className="bg-white rounded-xl shadow-sm border border-gray-100 hidden lg:flex items-center justify-center xl:col-span-2">
+            <EmptyState title="Select a conversation" sub="Messages from the Customer App appear here in real time" icon={<MessageSquareText className="w-10 h-10" />} />
           </section>
         )}
 
@@ -174,7 +179,7 @@ export default function SupportPage() {
 }
 
 // ======================================================================= Thread
-function Thread({ s, conv }: { s: AppState; conv: ConversationX }) {
+function Thread({ s, conv, onBack }: { s: AppState; conv: ConversationX; onBack: () => void }) {
   const [text, setText] = useState('');
   const [internal, setInternal] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -182,6 +187,7 @@ function Thread({ s, conv }: { s: AppState; conv: ConversationX }) {
   const firstName = conv.customerName.split(' ')[0];
   const canReply = can(s, 'support.create') || can(s, 'support.edit');
   const sla = num(getSetting(s, 'supportSlaMins', conv.branchId)) || 5;
+  const now = useNow(15_000);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
@@ -190,7 +196,7 @@ function Thread({ s, conv }: { s: AppState; conv: ConversationX }) {
   // SLA: first shopper message after the last agent reply.
   const lastAgentIdx = conv.messages.map((m) => m.from).lastIndexOf('agent');
   const waitingSince = conv.status !== 'resolved' ? conv.messages.slice(lastAgentIdx + 1).find((m) => m.from === 'shopper')?.at : undefined;
-  const waitingMins = waitingSince ? (Date.now() - new Date(waitingSince).getTime()) / 60000 : 0;
+  const waitingMins = waitingSince ? (now - new Date(waitingSince).getTime()) / 60000 : 0;
 
   const send = () => {
     const body = text.trim();
@@ -214,8 +220,11 @@ function Thread({ s, conv }: { s: AppState; conv: ConversationX }) {
 
   return (
     <section className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col min-h-0">
-      <header className="px-5 py-3 border-b border-gray-100 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-[#1e40af]/10 text-[#1e40af] font-semibold flex items-center justify-center text-sm">{conv.customerName.split(' ').map((p) => p[0]).slice(0, 2).join('')}</div>
+      <header className="px-3 sm:px-5 py-3 border-b border-gray-100 flex flex-wrap items-center gap-2 sm:gap-3">
+        <button onClick={onBack} className="lg:hidden -ml-1 w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100" aria-label="Back to conversations">
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div className="hidden sm:flex w-9 h-9 shrink-0 rounded-full bg-[#c8151d]/10 text-[#c8151d] font-semibold items-center justify-center text-sm">{conv.customerName.split(' ').map((p) => p[0]).slice(0, 2).join('')}</div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 truncate">{conv.customerName}</p>
           <p className="text-xs text-gray-500">{conv.category} · {branchName(s, conv.branchId)} · {conv.assignedTo ? `Assigned to ${conv.assignedTo}` : 'Unassigned'}</p>
@@ -225,12 +234,12 @@ function Thread({ s, conv }: { s: AppState; conv: ConversationX }) {
             {waitingMins > sla ? 'SLA breached' : 'Waiting'} · {Math.floor(waitingMins)} min
           </Pill>
         )}
-        <Pill className={conv.status === 'resolved' ? 'bg-green-100 text-green-800' : conv.status === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}>
+        <Pill className={conv.status === 'resolved' ? 'bg-green-100 text-green-800' : conv.status === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}>
           {conv.status === 'pending' ? 'Pending customer' : conv.status}
         </Pill>
       </header>
 
-      <div ref={scroller} className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-[#fafafa]">
+      <div ref={scroller} className="flex-1 overflow-y-auto px-3 sm:px-5 py-4 space-y-3 bg-[#fafafa]">
         {conv.messages.map((m, i) => {
           if (m.from === 'system') {
             return (
@@ -249,7 +258,7 @@ function Thread({ s, conv }: { s: AppState; conv: ConversationX }) {
                   className={cn(
                     'rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap',
                     m.internal ? 'bg-yellow-50 border border-yellow-300 text-yellow-950 rounded-br-sm'
-                      : mineSide ? 'bg-[#1e40af] text-white rounded-br-sm'
+                      : mineSide ? 'bg-[#c8151d] text-white rounded-br-sm'
                         : m.from === 'rider' ? 'bg-green-50 border border-green-200 text-gray-800 rounded-bl-sm'
                           : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm',
                   )}
@@ -285,13 +294,13 @@ function Thread({ s, conv }: { s: AppState; conv: ConversationX }) {
       <footer className={cn('border-t p-3', internal ? 'bg-yellow-50 border-yellow-200' : 'border-gray-100')}>
         {canReply ? (
           <>
-            <div className="flex items-center gap-1 mb-2">
-              <button onClick={() => setInternal(false)} className={cn('text-xs font-medium px-2.5 py-1 rounded-md', !internal ? 'bg-[#1e40af] text-white' : 'text-gray-500 hover:bg-gray-100')}>Reply to shopper</button>
+            <div className="flex flex-wrap items-center gap-1 mb-2">
+              <button onClick={() => setInternal(false)} className={cn('text-xs font-medium px-2.5 py-1 rounded-md', !internal ? 'bg-[#c8151d] text-white' : 'text-gray-500 hover:bg-gray-100')}>Reply to customer</button>
               <button onClick={() => setInternal(true)} className={cn('text-xs font-medium px-2.5 py-1 rounded-md inline-flex items-center gap-1', internal ? 'bg-yellow-400 text-yellow-950' : 'text-gray-500 hover:bg-gray-100')}><StickyNote className="w-3 h-3" /> Internal note</button>
               <div className="ml-auto flex items-center gap-1">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="ghost" size="sm"><MessageSquareText className="w-4 h-4" /> Saved replies</Button></DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80">
+                  <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-1rem)]">
                     <DropdownMenuLabel>Saved replies</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {SAVED_REPLIES.map((r) => (
@@ -409,10 +418,10 @@ function SidePanel({ s, conv }: { s: AppState; conv: ConversationX }) {
             <p className="flex items-center gap-2 text-gray-600"><Phone className="w-4 h-4 text-gray-400" />{customer.mobile}</p>
             <p className="text-gray-500 text-xs">{cityName(s, customer.cityId)} · {custOrders.length} orders · since {new Date(customer.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</p>
             <div className="flex gap-3 pt-1">
-              <span className="inline-flex items-center gap-1 text-xs text-gray-600"><Wallet className="w-3.5 h-3.5 text-green-600" /> Credit <b className="text-[#1e40af]">{peso(customer.storeCredit)}</b></span>
+              <span className="inline-flex items-center gap-1 text-xs text-gray-600"><Wallet className="w-3.5 h-3.5 text-green-600" /> Credit <b className="text-[#c8151d]">{peso(customer.storeCredit)}</b></span>
               <span className="inline-flex items-center gap-1 text-xs text-gray-600"><Star className="w-3.5 h-3.5 text-amber-500" /> {customer.points} pts</span>
             </div>
-            <Link href="/customers" className="text-xs text-[#1e40af] hover:underline inline-flex items-center gap-1">Customer profile <ExternalLink className="w-3 h-3" /></Link>
+            <Link href="/customers" className="text-xs text-[#c8151d] hover:underline inline-flex items-center gap-1">Customer profile <ExternalLink className="w-3 h-3" /></Link>
           </div>
         ) : <p className="text-sm text-gray-400 mt-2">Unknown customer</p>}
       </div>
@@ -423,16 +432,16 @@ function SidePanel({ s, conv }: { s: AppState; conv: ConversationX }) {
         {order ? (
           <div className="mt-2 rounded-lg border border-gray-100 p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <Link href={`/orders/${order.id}`} className="font-semibold text-[#1e40af] hover:underline inline-flex items-center gap-1">{order.number} <ExternalLink className="w-3 h-3" /></Link>
+              <Link href={`/orders/${order.id}`} className="font-semibold text-[#c8151d] hover:underline inline-flex items-center gap-1">{order.number} <ExternalLink className="w-3 h-3" /></Link>
               <StatusBadge status={order.status} />
             </div>
             <p className="text-xs text-gray-500">{branchName(s, order.branchId)} · {order.fulfillment} · {timeAgo(order.placedAt)}</p>
             <ul className="text-xs text-gray-600 space-y-0.5 max-h-28 overflow-y-auto">
-              {order.items.map((i) => <li key={i.productId} className="flex justify-between gap-2"><span className="truncate">{i.image} {i.name}</span><span className="text-gray-400 shrink-0">× {i.qty}</span></li>)}
+              {order.items.map((i) => <li key={i.productId} className="flex justify-between gap-2"><span className="truncate"><ProductImage image={i.image} /> {i.name}</span><span className="text-gray-400 shrink-0">× {i.qty}</span></li>)}
             </ul>
             <div className="flex items-center justify-between pt-1 border-t border-gray-100">
               <PaymentBadge status={order.paymentStatus} />
-              <span className="text-sm font-bold text-[#1e40af]">{peso(order.total)}</span>
+              <span className="text-sm font-bold text-[#c8151d]">{peso(order.total)}</span>
             </div>
             {order.refundedAmount > 0 && <p className="text-xs text-[#dc2626]">Refunded {peso(order.refundedAmount)}</p>}
           </div>
@@ -458,7 +467,7 @@ function SidePanel({ s, conv }: { s: AppState; conv: ConversationX }) {
           <span className="text-xs text-gray-500">Status</span>
           <div className="grid grid-cols-3 gap-1 mt-1">
             {(['open', 'pending', 'resolved'] as const).map((st) => (
-              <button key={st} disabled={!canAct} onClick={() => setStatus(st)} className={cn('rounded-md border py-1 text-xs font-medium capitalize disabled:opacity-50', conv.status === st ? 'border-[#1e40af] bg-blue-50 text-[#1e40af]' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}>{st}</button>
+              <button key={st} disabled={!canAct} onClick={() => setStatus(st)} className={cn('rounded-md border py-1 text-xs font-medium capitalize disabled:opacity-50', conv.status === st ? 'border-[#c8151d] bg-red-50 text-[#c8151d]' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}>{st}</button>
             ))}
           </div>
         </div>
@@ -488,7 +497,7 @@ function SidePanel({ s, conv }: { s: AppState; conv: ConversationX }) {
           <span className="text-xs text-gray-500 flex items-center gap-1"><Tag className="w-3 h-3" /> Tags</span>
           <div className="flex flex-wrap gap-1 mt-1">
             {(conv.tags ?? []).map((t) => (
-              <Pill key={t} className="bg-blue-50 text-[#1e40af]">#{t}{canAct && <button onClick={() => removeTag(t)} aria-label={`Remove ${t}`}><X className="w-3 h-3" /></button>}</Pill>
+              <Pill key={t} className="bg-red-50 text-[#c8151d]">#{t}{canAct && <button onClick={() => removeTag(t)} aria-label={`Remove ${t}`}><X className="w-3 h-3" /></button>}</Pill>
             ))}
             {(conv.tags ?? []).length === 0 && <span className="text-xs text-gray-400">No tags</span>}
           </div>
@@ -523,7 +532,7 @@ function ActionBtn({ icon: Icon, label, onClick, disabled, danger }: { icon: typ
   return (
     <button
       onClick={onClick} disabled={disabled}
-      className={cn('flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed', danger ? 'border-red-100 text-[#dc2626] hover:bg-red-50' : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-[#1e40af]/40')}
+      className={cn('flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed', danger ? 'border-red-100 text-[#dc2626] hover:bg-red-50' : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-[#c8151d]/40')}
     >
       <Icon className="w-4 h-4" strokeWidth={1.75} />
       {label}

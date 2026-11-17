@@ -4,7 +4,7 @@
 
 import { cn } from '@/src/lib/utils';
 
-/** iOS-style switch (shadcn has no Switch in this project). */
+/** Toggle switch (shadcn has no Switch in this project). */
 export function Toggle({ checked, onChange, disabled, size = 'md', label }: {
   checked: boolean; onChange?: (v: boolean) => void; disabled?: boolean; size?: 'sm' | 'md'; label?: string;
 }) {
@@ -21,9 +21,9 @@ export function Toggle({ checked, onChange, disabled, size = 'md', label }: {
       disabled={disabled}
       onClick={() => onChange?.(!checked)}
       className={cn(
-        'relative inline-flex shrink-0 items-center rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#1e40af]/30 disabled:opacity-50 disabled:cursor-not-allowed',
+        'relative inline-flex shrink-0 items-center rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#c8151d]/30 disabled:opacity-50 disabled:cursor-not-allowed',
         w,
-        checked ? 'bg-[#1e40af]' : 'bg-gray-300',
+        checked ? 'bg-[#c8151d]' : 'bg-gray-300',
       )}
     >
       <span className={cn('inline-block rounded-full bg-white shadow transition-transform translate-x-[2px]', k, checked && shift)} />
@@ -45,7 +45,7 @@ const STATUS_CLASSES: Record<string, string> = {
   active: 'bg-green-100 text-green-800',
   paused: 'bg-amber-100 text-amber-800',
   closed: 'bg-gray-200 text-gray-700',
-  invited: 'bg-blue-100 text-blue-800',
+  invited: 'bg-red-100 text-red-800',
   deactivated: 'bg-red-100 text-red-700',
 };
 export function EntityStatus({ status }: { status: string }) {
@@ -58,7 +58,7 @@ export function EntityStatus({ status }: { status: string }) {
 
 export function Tip({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn('rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 flex gap-2 items-start', className)}>
+    <div className={cn('rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex gap-2 items-start', className)}>
       {children}
     </div>
   );

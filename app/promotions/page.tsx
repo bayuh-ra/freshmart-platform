@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/src/components/ui/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/src/components/ui/shadcn/dialog';
 import { DAY, avg, isSale, netSales } from '@/src/components/reports/analytics';
+import { useNow } from '@/src/components/reports/ui';
 import { cn } from '@/src/lib/utils';
 
 const TYPE_LABEL: Record<Voucher['type'], string> = { percent: 'Percent off', fixed: 'Fixed amount', free_delivery: 'Free delivery' };
@@ -30,7 +31,7 @@ function voucherState(v: Voucher) {
   if (!v.active) return { label: 'Inactive', cls: 'bg-gray-100 text-gray-600' };
   if (v.used >= v.maxUses) return { label: 'Fully redeemed', cls: 'bg-gray-200 text-gray-700' };
   if (new Date(v.end) < now) return { label: 'Expired', cls: 'bg-gray-200 text-gray-700' };
-  if (new Date(v.start) > now) return { label: 'Scheduled', cls: 'bg-blue-100 text-blue-800' };
+  if (new Date(v.start) > now) return { label: 'Scheduled', cls: 'bg-red-100 text-red-800' };
   return { label: 'Live', cls: 'bg-green-100 text-green-800' };
 }
 
@@ -58,8 +59,8 @@ export default function PromotionsPage() {
   return (
     <DashboardLayout title="Promotions" eyebrow="Marketing" hideBranch>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Vouchers & promotions</h1>
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Vouchers & promotions</h1>
           <p className="text-sm text-gray-500 mt-0.5">{s.vouchers.filter((v) => voucherState(v).label === 'Live').length} live vouchers · {s.vouchers.reduce((a, v) => a + v.used, 0).toLocaleString()} total redemptions</p>
         </div>
         {canCreate && <Button onClick={() => setEditing('new')}><Plus className="w-4 h-4" /> New voucher</Button>}
@@ -87,7 +88,7 @@ export default function PromotionsPage() {
               return (
                 <TableRow key={v.id}>
                   <TableCell className="pl-5">
-                    <div className="font-mono font-semibold text-[#1e40af]">{v.code}</div>
+                    <div className="font-mono font-semibold text-[#c8151d]">{v.code}</div>
                     <div className="text-xs text-gray-400 max-w-56 truncate">{v.description}</div>
                   </TableCell>
                   <TableCell><div className="flex items-center gap-2 text-sm"><Icon className="w-4 h-4 text-gray-400" strokeWidth={1.75} /><span>{TYPE_LABEL[v.type]}</span></div><div className="text-xs text-gray-500 ml-6">{valueLabel(v)}</div></TableCell>
@@ -100,7 +101,7 @@ export default function PromotionsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-between text-xs mb-1"><span className="font-medium text-gray-700">{v.used.toLocaleString()} / {v.maxUses.toLocaleString()}</span><span className="text-gray-400">{pct.toFixed(0)}%</span></div>
-                    <div className="h-1.5 rounded-full bg-gray-100"><div className={cn('h-1.5 rounded-full', pct >= 100 ? 'bg-gray-400' : pct > 80 ? 'bg-amber-500' : 'bg-[#1e40af]')} style={{ width: `${pct}%` }} /></div>
+                    <div className="h-1.5 rounded-full bg-gray-100"><div className={cn('h-1.5 rounded-full', pct >= 100 ? 'bg-gray-400' : pct > 80 ? 'bg-amber-500' : 'bg-[#c8151d]')} style={{ width: `${pct}%` }} /></div>
                   </TableCell>
                   <TableCell className="text-xs text-gray-500 whitespace-nowrap">{fmtDate(v.start)}<br />→ {fmtDate(v.end)}</TableCell>
                   <TableCell><Pill className={st.cls}>{st.label}</Pill></TableCell>
@@ -114,7 +115,7 @@ export default function PromotionsPage() {
         </Table>
       </Panel>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
         <RedemptionReport s={s} />
         <CampaignComposer s={s} />
       </div>
@@ -128,7 +129,7 @@ function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: (
   return (
     <button
       role="switch" aria-checked={checked} disabled={disabled} onClick={onChange}
-      className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50', checked ? 'bg-[#1e40af]' : 'bg-gray-300')}
+      className={cn('relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50', checked ? 'bg-[#c8151d]' : 'bg-gray-300')}
     >
       <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', checked ? 'translate-x-4.5' : 'translate-x-0.5')} />
     </button>
@@ -152,9 +153,9 @@ function RedemptionReport({ s }: { s: AppState }) {
   };
   return (
     <Panel title="Redemption report" action={<Button variant="outline" size="sm" onClick={csv}><Download className="w-4 h-4" /> CSV</Button>} bodyClass="p-0">
-      <div className="px-5 py-4 grid grid-cols-2 gap-4 border-b border-gray-100">
-        <div><p className="text-xs text-gray-500">Total discount cost</p><p className="text-2xl font-bold text-[#dc2626]">{pesoShort(total)}</p></div>
-        <div><p className="text-xs text-gray-500">Attributed sales</p><p className="text-2xl font-bold text-[#1e40af]">{pesoShort(rows.reduce((a, r) => a + r.revenue, 0))}</p></div>
+      <div className="px-4 sm:px-5 py-4 grid grid-cols-2 gap-4 border-b border-gray-100">
+        <div><p className="text-xs text-gray-500">Total discount cost</p><p className="text-xl sm:text-2xl font-bold text-[#dc2626]">{pesoShort(total)}</p></div>
+        <div><p className="text-xs text-gray-500">Attributed sales</p><p className="text-xl sm:text-2xl font-bold text-[#c8151d]">{pesoShort(rows.reduce((a, r) => a + r.revenue, 0))}</p></div>
       </div>
       <Table>
         <TableHeader>
@@ -186,6 +187,7 @@ function RedemptionReport({ s }: { s: AppState }) {
 // ---------------------------------------------------------------- Campaign composer
 type Channel = 'push' | 'sms' | 'email';
 function useSegments(s: AppState) {
+  const now = useNow();
   return useMemo(() => {
     const spend = new Map<string, number>();
     const last = new Map<string, string>();
@@ -197,24 +199,24 @@ function useSegments(s: AppState) {
     const segs: { key: string; label: string; list: Customer[] }[] = [
       { key: 'all', label: 'All customers (not blocked)', list: active },
       { key: 'high', label: 'High spenders', list: active.filter((c) => c.group === 'High spenders' || (spend.get(c.id) ?? 0) >= 5000) },
-      { key: 'inactive', label: 'Inactive 30 days', list: active.filter((c) => { const l = last.get(c.id); return !l || Date.now() - new Date(l).getTime() > 30 * DAY; }) },
-      { key: 'inactive7', label: 'Inactive 7 days (churn risk)', list: active.filter((c) => { const l = last.get(c.id); return !l || Date.now() - new Date(l).getTime() > 7 * DAY; }) },
+      { key: 'inactive', label: 'Inactive 30 days', list: active.filter((c) => { const l = last.get(c.id); return !l || now - new Date(l).getTime() > 30 * DAY; }) },
+      { key: 'inactive7', label: 'Inactive 7 days (churn risk)', list: active.filter((c) => { const l = last.get(c.id); return !l || now - new Date(l).getTime() > 7 * DAY; }) },
       ...s.cities.map((ct) => ({ key: `city:${ct.id}`, label: `City: ${ct.name}`, list: active.filter((c) => c.cityId === ct.id) })),
     ];
     return segs;
-  }, [s]);
+  }, [s, now]);
 }
 
 function CampaignComposer({ s }: { s: AppState }) {
   const segs = useSegments(s);
   const [segKey, setSegKey] = useState('high');
   const [channel, setChannel] = useState<Channel>('push');
-  const [title, setTitle] = useState('Weekend fresh deals 🥬');
-  const [msg, setMsg] = useState('Hi {name}! Get 10% off fresh produce this weekend with code FRESH10. Order now for same-day delivery.');
+  const [title, setTitle] = useState('Weekend meat deals 🥩');
+  const [msg, setMsg] = useState('Hi {name}! Get 10% off pork and beef this weekend with code FRESH10. Cut the way you like it, delivered cold.');
   const [sending, setSending] = useState(false);
   const seg = segs.find((x) => x.key === segKey) ?? segs[0];
   const sample = seg.list[0];
-  const preview = (c?: Customer) => msg.replaceAll('{name}', c ? c.name.split(' ')[0] : 'Maria').replaceAll('{city}', c ? cityName(s, c.cityId) : 'Davao City');
+  const preview = (c?: Customer) => msg.replaceAll('{name}', c ? c.name.split(' ')[0] : 'Maria').replaceAll('{city}', c ? cityName(s, c.cityId) : 'Digos City');
   const canSend = can(s, 'promotions.create');
   const smsParts = Math.ceil(preview(sample).length / 160);
 
@@ -238,9 +240,9 @@ function CampaignComposer({ s }: { s: AppState }) {
   const CH: { k: Channel; label: string; icon: typeof Bell }[] = [{ k: 'push', label: 'Push', icon: Bell }, { k: 'sms', label: 'SMS', icon: MessageSquare }, { k: 'email', label: 'Email', icon: Mail }];
 
   return (
-    <Panel title={<div className="flex items-center gap-2"><Megaphone className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} /><h2 className="text-base font-semibold text-gray-900">Campaign composer</h2></div>}>
+    <Panel title={<div className="flex items-center gap-2"><Megaphone className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} /><h2 className="text-base font-semibold text-gray-900">Campaign composer</h2></div>}>
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block"><span className="text-xs font-medium text-gray-600">Segment</span>
             <select className={cn(selectClass, 'w-full mt-1')} value={segKey} onChange={(e) => setSegKey(e.target.value)}>
               {segs.map((x) => <option key={x.key} value={x.key}>{x.label} ({x.list.length})</option>)}
@@ -249,7 +251,7 @@ function CampaignComposer({ s }: { s: AppState }) {
           <div><span className="text-xs font-medium text-gray-600">Channel</span>
             <div className="mt-1 inline-flex w-full rounded-lg border border-gray-200 p-0.5">
               {CH.map(({ k, label, icon: Icon }) => (
-                <button key={k} onClick={() => setChannel(k)} className={cn('flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 text-sm rounded-md font-medium', channel === k ? 'bg-[#1e40af] text-white' : 'text-gray-600 hover:bg-gray-50')}>
+                <button key={k} onClick={() => setChannel(k)} className={cn('flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 text-sm rounded-md font-medium', channel === k ? 'bg-[#c8151d] text-white' : 'text-gray-600 hover:bg-gray-50')}>
                   <Icon className="w-3.5 h-3.5" />{label}
                 </button>
               ))}
@@ -262,15 +264,15 @@ function CampaignComposer({ s }: { s: AppState }) {
           </label>
         )}
         <label className="block">
-          <span className="text-xs font-medium text-gray-600 flex justify-between">Message <span className="text-gray-400 font-normal">Variables: {'{name}'} {'{city}'}</span></span>
+          <span className="text-xs font-medium text-gray-600 flex flex-wrap justify-between gap-x-2">Message <span className="text-gray-400 font-normal">Variables: {'{name}'} {'{city}'}</span></span>
           <textarea rows={3} className="w-full mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus-glow" value={msg} onChange={(e) => setMsg(e.target.value)} />
         </label>
         <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Preview for {sample?.name ?? 'sample customer'}</p>
           <div className="rounded-lg bg-white shadow-sm border border-gray-100 p-3 flex gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#1e40af] text-white flex items-center justify-center text-sm font-bold shrink-0">FM</div>
+            <div className="w-9 h-9 rounded-lg bg-[#c8151d] text-white flex items-center justify-center text-sm font-bold shrink-0">FM</div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900">{channel === 'sms' ? 'FreshMart' : title}</p>
+              <p className="text-sm font-semibold text-gray-900">{channel === 'sms' ? 'Jovanne’s Meat Shop' : title}</p>
               <p className="text-sm text-gray-600">{preview(sample)}</p>
             </div>
           </div>
@@ -289,7 +291,7 @@ function CampaignComposer({ s }: { s: AppState }) {
 // ---------------------------------------------------------------- Create / edit dialog
 function VoucherDialog({ s, voucher, onClose }: { s: AppState; voucher?: Voucher; onClose: () => void }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [f, setF] = useState({
+  const [f, setF] = useState(() => ({
     code: voucher?.code ?? '',
     description: voucher?.description ?? '',
     type: voucher?.type ?? ('percent' as Voucher['type']),
@@ -301,7 +303,7 @@ function VoucherDialog({ s, voucher, onClose }: { s: AppState; voucher?: Voucher
     firstOrderOnly: voucher?.firstOrderOnly ?? false,
     fulfillment: voucher?.fulfillment ?? ('' as '' | 'delivery' | 'pickup'),
     active: voucher?.active ?? true,
-  });
+  }));
   const [basket, setBasket] = useState(Math.max(1200, f.minBasket));
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
 
@@ -344,10 +346,10 @@ function VoucherDialog({ s, voucher, onClose }: { s: AppState; voucher?: Voucher
   const lbl = 'text-xs font-medium text-gray-600';
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-3xl sm:max-w-3xl">
+      <DialogContent className="max-w-3xl sm:max-w-3xl p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{voucher ? `Edit ${voucher.code}` : 'New voucher'}</DialogTitle>
-          <DialogDescription>Vouchers apply at checkout in the Shopper App and at the Order Desk.</DialogDescription>
+          <DialogDescription>Vouchers apply at checkout in the Customer App and at the Order Desk.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
           <div className="md:col-span-3 space-y-3">
@@ -359,8 +361,8 @@ function VoucherDialog({ s, voucher, onClose }: { s: AppState; voucher?: Voucher
                 </select>
               </label>
             </div>
-            <label className="block"><span className={lbl}>Description (shown to shoppers)</span><input className={cn(inputClass, 'w-full mt-1')} placeholder="10% off fresh produce" value={f.description} onChange={(e) => set('description', e.target.value)} /></label>
-            <div className="grid grid-cols-3 gap-3">
+            <label className="block"><span className={lbl}>Description (shown to customers)</span><input className={cn(inputClass, 'w-full mt-1')} placeholder="10% off pork cuts" value={f.description} onChange={(e) => set('description', e.target.value)} /></label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <label className="block"><span className={lbl}>{f.type === 'percent' ? 'Percent (%)' : 'Amount (₱)'}</span>
                 <input type="number" min={0} disabled={f.type === 'free_delivery'} className={cn(inputClass, 'w-full mt-1 disabled:bg-gray-50')} value={f.type === 'free_delivery' ? '' : f.value} onChange={(e) => set('value', Number(e.target.value))} />
               </label>
@@ -371,15 +373,15 @@ function VoucherDialog({ s, voucher, onClose }: { s: AppState; voucher?: Voucher
               <label className="block"><span className={lbl}>Start date</span><input type="date" className={cn(inputClass, 'w-full mt-1')} value={f.start} min={voucher ? undefined : today} onChange={(e) => set('start', e.target.value)} /></label>
               <label className="block"><span className={lbl}>End date</span><input type="date" className={cn(inputClass, 'w-full mt-1')} value={f.end} onChange={(e) => set('end', e.target.value)} /></label>
             </div>
-            <div className="grid grid-cols-2 gap-3 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
               <label className="block"><span className={lbl}>Fulfillment restriction</span>
                 <select className={cn(selectClass, 'w-full mt-1')} value={f.fulfillment} onChange={(e) => set('fulfillment', e.target.value as typeof f.fulfillment)}>
                   <option value="">Delivery & pickup</option><option value="delivery">Delivery only</option><option value="pickup">Pickup only</option>
                 </select>
               </label>
               <div className="space-y-2 pb-1">
-                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={f.firstOrderOnly} onChange={(e) => set('firstOrderOnly', e.target.checked)} className="accent-[#1e40af]" /> First order only</label>
-                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={f.active} onChange={(e) => set('active', e.target.checked)} className="accent-[#1e40af]" /> Active</label>
+                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={f.firstOrderOnly} onChange={(e) => set('firstOrderOnly', e.target.checked)} className="accent-[#c8151d]" /> First order only</label>
+                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={f.active} onChange={(e) => set('active', e.target.checked)} className="accent-[#c8151d]" /> Active</label>
               </div>
             </div>
           </div>
@@ -387,13 +389,13 @@ function VoucherDialog({ s, voucher, onClose }: { s: AppState; voucher?: Voucher
           <div className="md:col-span-2 rounded-xl border border-gray-100 bg-gray-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Promotion preview</p>
             <label className="block mt-3"><span className={lbl}>Example basket: {pesoShort(basket)}</span>
-              <input type="range" min={100} max={5000} step={50} value={basket} onChange={(e) => setBasket(Number(e.target.value))} className="w-full accent-[#1e40af]" />
+              <input type="range" min={100} max={5000} step={50} value={basket} onChange={(e) => setBasket(Number(e.target.value))} className="w-full accent-[#c8151d]" />
             </label>
             <div className="mt-3 rounded-lg bg-white border border-gray-100 p-3 text-sm space-y-1.5">
               <Row label="Subtotal" value={peso(basket)} />
               <Row label={f.fulfillment === 'pickup' ? 'Delivery fee (n/a)' : 'Delivery fee'} value={peso(f.fulfillment === 'pickup' ? 0 : fee)} />
               <Row label={<span className="font-mono">{f.code || 'CODE'}</span>} value={meets ? `− ${peso(f.type === 'free_delivery' && f.fulfillment === 'pickup' ? 0 : disc)}` : '—'} className={meets ? 'text-green-700' : 'text-gray-400'} />
-              <div className="border-t border-gray-100 pt-1.5"><Row label={<span className="font-semibold">Total</span>} value={<span className="font-bold text-[#1e40af]">{peso(meets ? totalAfter : totalBefore)}</span>} /></div>
+              <div className="border-t border-gray-100 pt-1.5"><Row label={<span className="font-semibold">Total</span>} value={<span className="font-bold text-[#c8151d]">{peso(meets ? totalAfter : totalBefore)}</span>} /></div>
             </div>
             <p className={cn('text-xs mt-2', meets ? 'text-green-700' : 'text-amber-700')}>
               {meets ? `Shopper saves ${peso(disc)} (${((disc / totalBefore) * 100).toFixed(1)}%).` : `Basket below minimum ${pesoShort(f.minBasket)} — voucher will be rejected.`}

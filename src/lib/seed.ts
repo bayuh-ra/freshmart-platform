@@ -5,7 +5,7 @@ import type {
 } from './types';
 
 // Bump when the seed shape changes: browsers holding an older version reseed once.
-export const STATE_VERSION = 7;
+export const STATE_VERSION = 9;
 
 // Deterministic pseudo-random so the seed looks the same on every reset.
 function rng(seed: number) {
@@ -31,18 +31,18 @@ const cities: City[] = [{ id: 'c-dgs', name: 'Digos City', region: 'Davao del Su
 const branches: Branch[] = [
   {
     id: 'b-dgs', code: 'DGS', name: 'Digos', cityId: 'c-dgs', address: 'Rizal Ave, Zone 1, Digos City, Davao del Sur',
-    phone: '(082) 553-1001', email: 'digos@freshmartmeats.ph', lat: 6.7497, lng: 125.3572, hours: '6:00 AM – 8:00 PM', status: 'active',
+    phone: '(082) 553-1001', email: 'digos@jovannesmeatshop.ph', lat: 6.7497, lng: 125.3572, hours: '6:00 AM – 8:00 PM', status: 'active',
     services: { delivery: true, pickup: true, walkIn: false, phone: false, picker: true }, pickupInstructions: 'Pickup counter beside the meat display',
   },
 ];
 
 const categories: Category[] = [
-  { id: 'cat-beef', name: 'Beef', icon: '🥩', sort: 1 },
-  { id: 'cat-pork', name: 'Pork', icon: '🥓', sort: 2 },
-  { id: 'cat-chicken', name: 'Chicken', icon: '🍗', sort: 3 },
-  { id: 'cat-processed', name: 'Processed Meats', icon: '🌭', sort: 4 },
-  { id: 'cat-seafood', name: 'Seafood', icon: '🐟', sort: 5 },
-  { id: 'cat-grocery', name: 'Groceries', icon: '🛒', sort: 6 },
+  { id: 'cat-beef', name: 'Beef', icon: '🥩', sort: 1, photo: '/images/photos/beef-steak.jpg' },
+  { id: 'cat-pork', name: 'Pork', icon: '🥓', sort: 2, photo: '/images/photos/cat-pork.jpg' },
+  { id: 'cat-chicken', name: 'Chicken', icon: '🍗', sort: 3, photo: '/images/photos/cat-chicken.jpg' },
+  { id: 'cat-processed', name: 'Processed Meats', icon: '🌭', sort: 4, photo: '/images/photos/cat-processed.jpg' },
+  { id: 'cat-seafood', name: 'Seafood', icon: '🐟', sort: 5, photo: '/images/photos/cat-seafood.jpg' },
+  { id: 'cat-grocery', name: 'Groceries', icon: '🛒', sort: 6, photo: '/images/photos/cat-grocery.jpg' },
 ];
 
 /** Cut & preparation options (spec: whole, sliced, cubed, ground, for adobo, for sinigang, for BBQ …). */
@@ -193,6 +193,108 @@ const productRows: P[] = [
   pk('p-cola', 'Cola', 'Coca-Cola', 'cat-grocery', '1.5 L', 85, '🥤', 'shelf', 's-5', 'L'),
 ];
 
+
+/** Product photos (free-licence, see /credits). Products not listed keep their emoji. */
+const PHOTO: Record<string, string> = {
+  'p-beef-brisket': 'beef-steak',
+  'p-beef-sirloin': 'beef-steak',
+  'p-beef-tenderloin': 'beef-steak',
+  'p-beef-ribeye': 'beef-ribeye',
+  'p-beef-shortribs': 'beef-ribs',
+  'p-beef-shank': 'beef-shank',
+  'p-beef-kenchi': 'beef-shank',
+  'p-beef-round': 'beef-steak',
+  'p-beef-chuck': 'beef-ribs',
+  'p-beef-ground': 'beef-ground',
+  'p-beef-tripe': 'beef-steak',
+  'p-beef-oxtail': 'beef-oxtail',
+  'p-beef-tapacut': 'beef-steak',
+  'p-beef-cubes': 'beef-steak',
+  'p-beef-flank': 'beef-steak',
+  'p-beef-tbone': 'beef-tbone',
+  'p-beef-liver': 'beef-liver',
+  'p-beef-bones': 'beef-oxtail',
+  'p-pork-liempo': 'pork-belly',
+  'p-pork-kasim': 'cat-pork',
+  'p-pork-pigue': 'cat-pork',
+  'p-pork-belly': 'pork-belly',
+  'p-pork-chop': 'pork-chop',
+  'p-pork-spareribs': 'cat-pork',
+  'p-pork-babyback': 'cat-pork',
+  'p-pork-shoulder': 'cat-pork',
+  'p-pork-ground': 'beef-ground',
+  'p-pork-pata': 'pork-hock',
+  'p-pork-tenderloin': 'pork-chop',
+  'p-pork-loin': 'pork-chop',
+  'p-pork-ears': 'cat-pork',
+  'p-pork-liver': 'beef-liver',
+  'p-pork-intestine': 'pork-offal',
+  'p-pork-maskara': 'cat-pork',
+  'p-pork-neckbones': 'cat-pork',
+  'p-pork-kawali': 'pork-belly',
+  'p-pork-bbq': 'pork-bbq',
+  'p-pork-sinigang': 'pork-belly',
+  'p-chicken-whole': 'chicken-whole',
+  'p-chicken-breast': 'chicken-breast',
+  'p-chicken-fillet': 'chicken-breast',
+  'p-chicken-thigh': 'chicken-thigh',
+  'p-chicken-thighfillet': 'chicken-thigh',
+  'p-chicken-drumstick': 'chicken-drumstick',
+  'p-chicken-wings': 'chicken-wings',
+  'p-chicken-legquarter': 'cat-chicken',
+  'p-chicken-liver': 'chicken-liver',
+  'p-chicken-gizzard': 'chicken-liver',
+  'p-chicken-feet': 'chicken-feet',
+  'p-chicken-ground': 'chicken-breast',
+  'p-chicken-neck': 'cat-chicken',
+  'p-chicken-tinola': 'cat-chicken',
+  'p-chicken-adobo': 'cat-chicken',
+  'p-chicken-skin': 'cat-chicken',
+  'p-longganisa': 'longganisa',
+  'p-garlic-longganisa': 'longganisa',
+  'p-tocino': 'tocino',
+  'p-chicken-tocino': 'tocino',
+  'p-beef-tapa': 'tapa',
+  'p-skinless': 'longganisa',
+  'p-hotdog': 'hotdog',
+  'p-ham': 'ham',
+  'p-bacon': 'bacon',
+  'p-embutido': 'embutido',
+  'p-nuggets': 'nuggets',
+  'p-cornedbeef': 'corned-beef',
+  'p-bbq-skewers': 'pork-bbq',
+  'p-siomai': 'siomai',
+  'p-tilapia': 'tilapia',
+  'p-bangus': 'cat-seafood',
+  'p-galunggong': 'galunggong',
+  'p-shrimp': 'shrimp',
+  'p-squid': 'squid',
+  'p-tuna-belly': 'cat-seafood',
+  'p-pompano': 'pompano',
+  'p-boneless-bangus': 'fish-fillet',
+  'p-cream-dory': 'fish-fillet',
+  'p-mussels': 'cat-seafood',
+  'p-rice': 'rice',
+  'p-eggs': 'eggs',
+  'p-soy': 'soy-sauce',
+  'p-vinegar': 'vinegar',
+  'p-patis': 'soy-sauce',
+  'p-garlic': 'garlic',
+  'p-onion': 'onion',
+  'p-calamansi': 'calamansi',
+  'p-ginger': 'ginger',
+  'p-tomato': 'tomato',
+  'p-sinigang-mix': 'sinigang-mix',
+  'p-pepper': 'spices',
+  'p-salt': 'salt',
+  'p-sugar': 'sugar',
+  'p-charcoal': 'charcoal',
+  'p-ketchup': 'sauce',
+  'p-lemongrass': 'lemongrass',
+  'p-cola': 'soda',
+};
+const photo = (key: string) => `/images/photos/${key}.jpg`;
+
 const products: Product[] = productRows.map((r, i) => ({
   id: r[0],
   sku: `SKU-${(1001 + i).toString()}`,
@@ -203,7 +305,7 @@ const products: Product[] = productRows.map((r, i) => ({
   unit: r[4],
   size: r[5],
   description: r[9] ? `${r[1]}, cut fresh at the Digos branch. Price per kg; the final price is set when weighed.` : `${r[2]} ${r[1]} — ${r[5]}.`,
-  image: r[8],
+  image: PHOTO[r[0]] ? photo(PHOTO[r[0]]) : r[8],
   basePrice: r[6],
   costPrice: r[7],
   soldByWeight: r[9],
@@ -310,10 +412,10 @@ const roles: Role[] = [
 ];
 
 const staff: StaffUser[] = [
-  { id: 'u-1', name: 'Hannah Admin', email: 'admin@freshmartmeats.ph', roleId: 'role-super', scope: { type: 'all', ids: [] }, status: 'active', lastActive: minsAgo(1), twoFactor: true },
-  { id: 'u-2', name: 'Mark Lim', email: 'mark.lim@freshmartmeats.ph', roleId: 'role-admin', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(4), twoFactor: true },
-  { id: 'u-3', name: 'Ana Cruz', email: 'ana.cruz@freshmartmeats.ph', roleId: 'role-cashier', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(2), twoFactor: false },
-  { id: 'u-4', name: 'Ben Torres', email: 'ben.torres@freshmartmeats.ph', roleId: 'role-cashier', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(8), twoFactor: false },
+  { id: 'u-1', name: 'Hannah Admin', email: 'admin@jovannesmeatshop.ph', roleId: 'role-super', scope: { type: 'all', ids: [] }, status: 'active', lastActive: minsAgo(1), twoFactor: true },
+  { id: 'u-2', name: 'Mark Lim', email: 'mark.lim@jovannesmeatshop.ph', roleId: 'role-admin', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(4), twoFactor: true },
+  { id: 'u-3', name: 'Ana Cruz', email: 'ana.cruz@jovannesmeatshop.ph', roleId: 'role-cashier', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(2), twoFactor: false },
+  { id: 'u-4', name: 'Ben Torres', email: 'ben.torres@jovannesmeatshop.ph', roleId: 'role-cashier', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(8), twoFactor: false },
 ];
 
 const S = (s: Omit<Setting, 'city' | 'branch'> & Partial<Pick<Setting, 'city' | 'branch'>>): Setting => ({ city: {}, branch: {}, ...s });
@@ -342,6 +444,7 @@ const settings: Setting[] = [
   S({ key: 'safetyBuffer', label: 'Online safety buffer (units held back)', group: 'Inventory', type: 'number', unit: 'units', global: 2 }),
   S({ key: 'lowStockThreshold', label: 'Low-stock alert threshold', group: 'Inventory', type: 'number', unit: 'units', global: 8 }),
   S({ key: 'receivingApprovalAbove', label: 'Direct Receiving manager approval above', group: 'Inventory', type: 'number', unit: '₱', global: 20000 }),
+  S({ key: 'dispatchRule', label: 'Rider suggestion order (manual assignment)', group: 'Riders', type: 'select', options: ['Nearest available', 'Lowest workload', 'Highest rating'], global: 'Nearest available' }),
   S({ key: 'maxActiveOrders', label: 'Max active orders per rider', group: 'Riders', type: 'number', global: 2 }),
   S({ key: 'podMethod', label: 'Proof of delivery', group: 'Riders', type: 'select', options: ['Photo', 'PIN', 'Photo + PIN'], global: 'Photo' }),
   S({ key: 'weightTolerancePct', label: 'Weight tolerance at packing (auto-apply within)', group: 'Meat & cold chain', type: 'number', unit: '%', global: 10 }),
@@ -352,9 +455,9 @@ const settings: Setting[] = [
 ];
 
 const banners: Banner[] = [
-  { id: 'bn-1', title: 'Fresh pork liempo today', subtitle: 'Cut the way you like it · ₱360/kg', color: 'from-rose-500 to-red-600', emoji: '🥓', active: true },
-  { id: 'bn-2', title: 'Bulalo weekend', subtitle: 'Beef shank & kenchi, cut for nilaga', color: 'from-amber-500 to-orange-600', emoji: '🍖', active: true },
-  { id: 'bn-3', title: 'Delivered cold', subtitle: 'Insulated bags + ice packs on every meat order', color: 'from-[#1e40af] to-[#2563eb]', emoji: '🧊', active: true },
+  { id: 'bn-1', title: 'Fresh pork liempo today', subtitle: 'Cut the way you like it · ₱360/kg', color: 'from-rose-500 to-red-600', emoji: '🥓', active: true, photo: '/images/photos/pork-belly.jpg' },
+  { id: 'bn-2', title: 'Bulalo weekend', subtitle: 'Beef shank & kenchi, cut for nilaga', color: 'from-amber-500 to-orange-600', emoji: '🍖', active: true, photo: '/images/photos/banner-bulalo.jpg' },
+  { id: 'bn-3', title: 'Delivered cold', subtitle: 'Insulated bags + ice packs on every meat order', color: 'from-[#c8151d] to-[#ec1b26]', emoji: '🧊', active: true, photo: '/images/photos/hero-butcher.jpg' },
 ];
 
 // ---------- Orders ----------

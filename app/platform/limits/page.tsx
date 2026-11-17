@@ -52,10 +52,10 @@ export default function PlanLimitsPage() {
                     {u.used} of {u.max} used{u.reached ? ' · limit reached' : ''}
                   </p>
                 </div>
-                <span className="text-2xl font-bold text-[#0f172a]">{u.pct}%</span>
+                <span className="text-2xl font-bold text-[#2a2322]">{u.pct}%</span>
               </div>
               <div className="h-2 rounded-full bg-gray-100 mt-3 overflow-hidden">
-                <div className={cn('h-full rounded-full', u.pct >= 100 ? 'bg-[#dc2626]' : u.pct >= 80 ? 'bg-amber-500' : 'bg-[#0f172a]')} style={{ width: `${u.pct}%` }} />
+                <div className={cn('h-full rounded-full', u.pct >= 100 ? 'bg-[#dc2626]' : u.pct >= 80 ? 'bg-amber-500' : 'bg-[#2a2322]')} style={{ width: `${u.pct}%` }} />
               </div>
               <div className="flex items-center gap-2 mt-4">
                 <label className="text-sm text-gray-600 shrink-0" htmlFor={`lim-${l.key}`}>Maximum</label>
@@ -64,7 +64,7 @@ export default function PlanLimitsPage() {
                   onKeyDown={(e) => { if (e.key === 'Enter') save(l.key); }}
                   className={cn(inputClass, 'w-28')} />
                 <button disabled={!dirty} onClick={() => save(l.key)}
-                  className="h-9 px-4 rounded-lg bg-[#0f172a] text-white text-sm font-medium hover:bg-[#1e293b] disabled:opacity-40">Save</button>
+                  className="h-9 px-4 rounded-lg bg-[#2a2322] text-white text-sm font-medium hover:bg-[#3d3432] disabled:opacity-40">Save</button>
               </div>
             </Panel>
           );

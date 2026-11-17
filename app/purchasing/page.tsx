@@ -15,6 +15,7 @@ import { branchName, can, exportCsv, fmtDateTime, peso, pesoShort, stockSummary 
 import type { AppState, PurchaseOrder } from '@/src/lib/types';
 import { Field, StateBadge } from '@/src/components/catalog/shared';
 import { cn } from '@/src/lib/utils';
+import { ProductImage } from '@/src/components/ProductImage';
 
 const ICON = { strokeWidth: 1.75 };
 type Line = { productId: string; qty: number; cost: number };
@@ -107,7 +108,7 @@ function PurchasingInner({ s }: { s: AppState }) {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="max-w-full overflow-x-auto overflow-y-hidden justify-start">
           <TabsTrigger value="pos">Purchase orders</TabsTrigger>
           <TabsTrigger value="reorder">Reorder suggestions {suggestions.length > 0 && <span className="ml-1 rounded-full bg-amber-100 text-amber-800 px-1.5 text-[10px]">{suggestions.length}</span>}</TabsTrigger>
           <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
@@ -115,7 +116,7 @@ function PurchasingInner({ s }: { s: AppState }) {
 
         <TabsContent value="pos" className="mt-4">
           <Panel title="Purchase orders" action={
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <select className={selectClass} value={status} onChange={(e) => setStatus(e.target.value)}>
                 <option value="all">All statuses</option>
                 {['draft', 'sent', 'partial', 'received', 'cancelled'].map((x) => <option key={x} value={x}>{x === 'partial' ? 'Partially received' : x[0].toUpperCase() + x.slice(1)}</option>)}
@@ -133,11 +134,11 @@ function PurchasingInner({ s }: { s: AppState }) {
                     const rec = po.lines.reduce((n, l) => n + l.received, 0);
                     return (
                       <TableRow key={po.id}>
-                        <TableCell className="pl-5"><button className="font-mono text-sm font-medium text-[#1e40af] hover:underline" onClick={() => setViewing(po)}>{po.number}</button></TableCell>
+                        <TableCell className="pl-5"><button className="font-mono text-sm font-medium text-[#c8151d] hover:underline" onClick={() => setViewing(po)}>{po.number}</button></TableCell>
                         <TableCell className="text-sm">{supplierName(s, po.supplierId)}</TableCell>
                         <TableCell className="text-sm text-gray-600">{branchName(s, po.branchId)}</TableCell>
                         <TableCell className="text-xs text-gray-500">{fmtDateTime(po.createdAt)}</TableCell>
-                        <TableCell className="text-xs text-gray-600"><div className="max-w-52 space-y-0.5">{po.lines.map((l, i) => { const p = s.products.find((x) => x.id === l.productId); return <p key={i} className="truncate">{p?.image} {p?.name ?? l.productId} ×{l.qty}</p>; })}</div></TableCell>
+                        <TableCell className="text-xs text-gray-600"><div className="max-w-52 space-y-0.5">{po.lines.map((l, i) => { const p = s.products.find((x) => x.id === l.productId); return <p key={i} className="truncate"><ProductImage image={p?.image} /> {p?.name ?? l.productId} ×{l.qty}</p>; })}</div></TableCell>
                         <TableCell className="text-right font-semibold">{peso(poTotal(po))}</TableCell>
                         <TableCell>
                           <div className="w-24">
@@ -180,7 +181,7 @@ function PurchasingInner({ s }: { s: AppState }) {
                       <TableCell><Pill>{x.terms}</Pill></TableCell>
                       <TableCell className="text-right text-sm">{x.leadDays} day{x.leadDays > 1 ? 's' : ''}</TableCell>
                       <TableCell className="text-sm">{prods.slice(0, 6).map((p) => p.image).join(' ')} <span className="text-xs text-gray-400">{prods.length} SKUs</span></TableCell>
-                      <TableCell className="text-right font-semibold text-[#1e40af]">{openPos}</TableCell>
+                      <TableCell className="text-right font-semibold text-[#c8151d]">{openPos}</TableCell>
                       <TableCell>{canEdit && <Button variant="outline" size="sm" onClick={() => setCreating({ supplierId: x.id })}><Plus {...ICON} /> PO</Button>}</TableCell>
                     </TableRow>
                   );
@@ -226,9 +227,9 @@ function CreatePODialog({ s, branchId, init, onClose, onCreated }: { s: AppState
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl p-4 sm:p-6">
         <DialogHeader><DialogTitle>Create purchase order</DialogTitle><DialogDescription>Products from the selected supplier are listed first. Costs default to the product cost price.</DialogDescription></DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Supplier"><select className={selectClass} value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>{s.suppliers.map((x) => <option key={x.id} value={x.id}>{x.name} · {x.terms}</option>)}</select></Field>
           <Field label="Deliver to branch"><select className={selectClass} value={branch} onChange={(e) => setBranch(e.target.value)}>{s.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
         </div>
@@ -238,8 +239,8 @@ function CreatePODialog({ s, branchId, init, onClose, onCreated }: { s: AppState
             {lines.map((l, i) => (
               <TableRow key={i}>
                 <TableCell>
-                  <select className={cn(selectClass, 'w-full')} value={l.productId} onChange={(e) => { const p = s.products.find((x) => x.id === e.target.value); setLines((ls) => ls.map((x, k) => (k === i ? { ...x, productId: e.target.value, cost: p?.costPrice ?? x.cost } : x))); }}>
-                    {options.map((p) => <option key={p.id} value={p.id}>{p.image} {p.name} ({p.size}){p.supplierId !== supplierId ? ' · other supplier' : ''}</option>)}
+                  <select className={cn(selectClass, 'w-full min-w-[12rem]')} value={l.productId} onChange={(e) => { const p = s.products.find((x) => x.id === e.target.value); setLines((ls) => ls.map((x, k) => (k === i ? { ...x, productId: e.target.value, cost: p?.costPrice ?? x.cost } : x))); }}>
+                    {options.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.size}){p.supplierId !== supplierId ? ' · other supplier' : ''}</option>)}
                   </select>
                 </TableCell>
                 <TableCell><input type="number" min={1} className={cn(inputClass, 'w-20')} value={l.qty} onChange={(e) => setLines((ls) => ls.map((x, k) => (k === i ? { ...x, qty: Number(e.target.value) } : x)))} /></TableCell>
@@ -250,11 +251,11 @@ function CreatePODialog({ s, branchId, init, onClose, onCreated }: { s: AppState
             ))}
           </TableBody>
         </Table>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Button variant="outline" size="sm" onClick={() => { const p = firstProduct(); if (p) setLines((ls) => [...ls, { productId: p.id, qty: 12, cost: p.costPrice }]); }}><Plus {...ICON} /> Add line</Button>
-          <p className="text-sm text-gray-600">Total <span className="text-lg font-bold text-[#1e40af] ml-2">{peso(total)}</span></p>
+          <p className="text-sm text-gray-600">Total <span className="text-lg font-bold text-[#c8151d] ml-2">{peso(total)}</span></p>
         </div>
-        <DialogFooter className="justify-end">
+        <DialogFooter className="flex-wrap justify-end">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="outline" onClick={() => save(false)}>Save draft</Button>
           <Button onClick={() => save(true)}><Mail {...ICON} /> Save &amp; send</Button>
@@ -302,7 +303,7 @@ function GRNDialog({ s, po, onClose }: { s: AppState; po: PurchaseOrder; onClose
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-4xl p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Goods received note · {po.number}</DialogTitle>
           <DialogDescription>{supplierName(s, po.supplierId)} → {branchName(s, po.branchId)}. Accepted quantities are posted to the stock ledger as receiving movements.</DialogDescription>
@@ -315,7 +316,7 @@ function GRNDialog({ s, po, onClose }: { s: AppState; po: PurchaseOrder; onClose
               const r = g[i];
               return (
                 <TableRow key={i}>
-                  <TableCell className="text-sm">{p?.image} {p?.name}<p className="text-[11px] text-gray-400">{peso(l.cost)} / unit</p></TableCell>
+                  <TableCell className="text-sm"><ProductImage image={p?.image} /> {p?.name}<p className="text-[11px] text-gray-400">{peso(l.cost)} / unit</p></TableCell>
                   <TableCell className="text-right">{l.qty}</TableCell>
                   <TableCell className="text-right text-gray-500">{l.received}</TableCell>
                   <TableCell><input type="number" min={0} className={cn(inputClass, 'w-20', r.qty < l.qty - l.received && 'border-amber-400')} value={r.qty} onChange={(e) => upd(i, { qty: Number(e.target.value) })} /></TableCell>
@@ -333,7 +334,7 @@ function GRNDialog({ s, po, onClose }: { s: AppState; po: PurchaseOrder; onClose
           </TableBody>
         </Table>
         <p className="text-xs text-gray-500">Damaged units are rejected (not added to stock) and flagged to the branch manager. Short deliveries keep the PO open as “Partially received”.</p>
-        <DialogFooter className="justify-end"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save}><PackageCheck {...ICON} /> Post GRN</Button></DialogFooter>
+        <DialogFooter className="flex-wrap justify-end"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save}><PackageCheck {...ICON} /> Post GRN</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -345,27 +346,27 @@ function PODetail({ s, po: initial, onClose }: { s: AppState; po: PurchaseOrder;
   const grns = s.movements.filter((m) => m.ref === po.number && m.type === 'receiving');
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">{po.number} <StateBadge value={po.status} /></DialogTitle>
+          <DialogTitle className="flex flex-wrap items-center gap-3">{po.number} <StateBadge value={po.status} /></DialogTitle>
           <DialogDescription>{sup?.name} · {sup?.contact} · {sup?.terms} · deliver to {branchName(s, po.branchId)} · created {fmtDateTime(po.createdAt)}</DialogDescription>
         </DialogHeader>
         <Table>
           <TableHeader><TableRow><TableHead>Product</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Received</TableHead><TableHead className="text-right">Cost</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
           <TableBody>
             {po.lines.map((l, i) => { const p = s.products.find((x) => x.id === l.productId); return (
-              <TableRow key={i}><TableCell>{p?.image} {p?.name}</TableCell><TableCell className="text-right">{l.qty}</TableCell><TableCell className={cn('text-right', l.received < l.qty ? 'text-amber-600' : 'text-green-700')}>{l.received}</TableCell><TableCell className="text-right">{peso(l.cost)}</TableCell><TableCell className="text-right font-medium">{peso(l.qty * l.cost)}</TableCell></TableRow>
+              <TableRow key={i}><TableCell><ProductImage image={p?.image} /> {p?.name}</TableCell><TableCell className="text-right">{l.qty}</TableCell><TableCell className={cn('text-right', l.received < l.qty ? 'text-amber-600' : 'text-green-700')}>{l.received}</TableCell><TableCell className="text-right">{peso(l.cost)}</TableCell><TableCell className="text-right font-medium">{peso(l.qty * l.cost)}</TableCell></TableRow>
             ); })}
           </TableBody>
         </Table>
-        <p className="text-right text-sm">PO total <b className="text-[#1e40af] text-lg ml-2">{peso(poTotal(po))}</b></p>
+        <p className="text-right text-sm">PO total <b className="text-[#c8151d] text-lg ml-2">{peso(poTotal(po))}</b></p>
         {grns.length > 0 && (
           <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
             <p className="font-semibold text-gray-800">Receipts</p>
             {grns.map((m) => <p key={m.id}>{fmtDateTime(m.at)} · {s.products.find((p) => p.id === m.productId)?.name} +{m.qty} · {m.reason} · {m.user}</p>)}
           </div>
         )}
-        <DialogFooter className="justify-end"><Button onClick={onClose}>Close</Button></DialogFooter>
+        <DialogFooter className="flex-wrap justify-end"><Button onClick={onClose}>Close</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -405,7 +406,7 @@ function Reorder({ s, branchId, rows, canEdit, onDone }: { s: AppState; branchId
 
   return (
     <Panel title={`Reorder suggestions · ${branchName(s, branchId)}`} action={canEdit && <Button disabled={!chosen.length} onClick={createPOs}><Plus {...ICON} /> Create PO from suggestions ({chosen.length})</Button>} bodyClass="p-0">
-      <p className="px-5 py-3 text-xs text-gray-500 border-b border-gray-100">Products whose available-to-sell is below the reorder point. Suggested qty tops stock up to 3× the reorder point, net of quantities already on open POs, in cases of 6.</p>
+      <p className="px-4 sm:px-5 py-3 text-xs text-gray-500 border-b border-gray-100">Products whose available-to-sell is below the reorder point. Suggested qty tops stock up to 3× the reorder point, net of quantities already on open POs, in cases of 6.</p>
       {rows.length === 0 ? <EmptyState title="All stocked up" sub="No product is below its reorder point at this branch" icon={<Users className="w-10 h-10" {...ICON} />} /> : (
         <Table>
           <TableHeader><TableRow><TableHead className="pl-5 w-10" /><TableHead>Product</TableHead><TableHead>Supplier</TableHead><TableHead className="text-right">On hand</TableHead><TableHead className="text-right">Available</TableHead><TableHead className="text-right">Reorder pt</TableHead><TableHead className="text-right">On order</TableHead><TableHead className="w-28">Order qty</TableHead><TableHead className="text-right">Est. cost</TableHead></TableRow></TableHeader>
@@ -415,7 +416,7 @@ function Reorder({ s, branchId, rows, canEdit, onDone }: { s: AppState; branchId
               return (
                 <TableRow key={r.p.id}>
                   <TableCell className="pl-5"><Checkbox checked={sel[r.p.id] ?? r.suggested > 0} onCheckedChange={(v) => setSel((x) => ({ ...x, [r.p.id]: v === true }))} /></TableCell>
-                  <TableCell>{r.p.image} {r.p.name} <span className="text-xs text-gray-400">{r.p.size}</span></TableCell>
+                  <TableCell><ProductImage image={r.p.image} /> {r.p.name} <span className="text-xs text-gray-400">{r.p.size}</span></TableCell>
                   <TableCell className="text-sm text-gray-600">{sup?.name ?? '—'}<p className="text-[11px] text-gray-400">{sup ? `${sup.leadDays}-day lead time` : ''}</p></TableCell>
                   <TableCell className="text-right">{r.onHand}</TableCell>
                   <TableCell className={cn('text-right font-bold', r.available === 0 ? 'text-[#dc2626]' : 'text-amber-600')}>{r.available}</TableCell>

@@ -16,10 +16,11 @@ import { addAudit, mutate, uid, useStore } from '@/src/lib/store';
 import { can, cityName } from '@/src/lib/logic';
 import type { Banner } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
+import { ProductImage } from '@/src/components/ProductImage';
 
 // Literal class strings so Tailwind generates them.
 const GRADIENTS = [
-  { label: 'Royal blue', value: 'from-[#1e40af] to-[#2563eb]' },
+  { label: 'Royal blue', value: 'from-[#c8151d] to-[#ec1b26]' },
   { label: 'Mango', value: 'from-amber-400 to-orange-500' },
   { label: 'Fresh green', value: 'from-emerald-500 to-teal-500' },
   { label: 'Berry', value: 'from-pink-500 to-rose-500' },
@@ -49,11 +50,11 @@ export default function ContentPage() {
   const editable = can(s, 'promotions.edit') || can(s, 'settings.edit');
   return (
     <DashboardLayout title="App Content & Branding" eyebrow="Administration" hideBranch>
-      <p className="text-sm text-gray-500 mb-4 flex items-center gap-1.5">
-        <Smartphone className="w-4 h-4" strokeWidth={1.75} />Remote configuration: everything here appears in the Shopper and Rider apps without an app-store release.
+      <p className="text-sm text-gray-500 mb-4 flex items-start gap-1.5">
+        <Smartphone className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.75} />Remote configuration: everything here appears in the Customer and Rider apps without an app update.
       </p>
       <Tabs defaultValue="home" className="space-y-4">
-        <TabsList>
+        <TabsList className="max-w-full overflow-x-auto overflow-y-hidden justify-start">
           <TabsTrigger value="home">Home screen</TabsTrigger>
           <TabsTrigger value="pages">Static pages</TabsTrigger>
           <TabsTrigger value="brand">Brand & app status</TabsTrigger>
@@ -70,7 +71,7 @@ export default function ContentPage() {
 
 // ---------------------------------------------------------------- Home
 
-const DEFAULT_SECTIONS = ['Banners carousel', 'Featured categories', 'Deals of the day', 'Buy again', 'Seasonal: Mango season', 'Fresh from the farm'];
+const DEFAULT_SECTIONS = ['Banners carousel', 'Featured categories', 'Deals of the day', 'Buy again', 'Bulalo weekend', 'Cut fresh today'];
 
 function HomeTab({ editable }: { editable: boolean }) {
   const s = useStore();
@@ -85,7 +86,7 @@ function HomeTab({ editable }: { editable: boolean }) {
       d.banners.find((x) => x.id === b.id)!.active = !b.active;
       addAudit(d, { module: 'Promotions', action: 'Banner status', detail: `Banner “${b.title}” ${b.active ? 'hidden' : 'published'}`, oldValue: b.active ? 'active' : 'inactive', newValue: b.active ? 'inactive' : 'active' });
     });
-    toast.success(b.active ? 'Banner hidden' : 'Banner published', { description: 'Shopper App home updates instantly.' });
+    toast.success(b.active ? 'Banner hidden' : 'Banner published', { description: 'Customer App home updates instantly.' });
   };
   const delBanner = (b: Banner) => {
     if (!confirm(`Delete banner “${b.title}”?`)) return;
@@ -124,14 +125,14 @@ function HomeTab({ editable }: { editable: boolean }) {
   const previewBanners = s.banners.filter((b) => b.active && (!b.cityId || previewCity === 'all' || b.cityId === previewCity));
 
   return (
-    <div className="grid xl:grid-cols-[1fr_340px] gap-5 items-start">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">
       <div className="space-y-5">
-        <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />Banners</h2>}
+        <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><ImageIcon className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />Banners</h2>}
           action={editable && <Button size="sm" onClick={() => setDlg('new')}><Plus className="w-4 h-4" strokeWidth={1.75} />New banner</Button>} bodyClass="p-0">
           <ul className="divide-y divide-gray-100">
             {s.banners.map((b, i) => (
-              <li key={b.id} className="px-5 py-3 flex items-center gap-4">
-                <div className="w-56 shrink-0"><BannerCard b={b} small /></div>
+              <li key={b.id} className="px-4 sm:px-5 py-3 flex flex-wrap items-center gap-3 sm:gap-4">
+                <div className="w-full sm:w-56 shrink-0"><BannerCard b={b} small /></div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 truncate">{b.title}</p>
                   <p className="text-xs text-gray-500 truncate">{b.subtitle}</p>
@@ -154,8 +155,8 @@ function HomeTab({ editable }: { editable: boolean }) {
           </ul>
         </Panel>
 
-        <div className="grid md:grid-cols-2 gap-5">
-          <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><LayoutList className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />Home sections</h2>} bodyClass="p-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><LayoutList className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />Home sections</h2>} bodyClass="p-2">
             {sections.map((sec, i) => (
               <div key={sec.name} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-50">
                 <span className="text-xs text-gray-400 w-4">{i + 1}</span>
@@ -198,10 +199,10 @@ function HomeTab({ editable }: { editable: boolean }) {
         </div>
         <div className="rounded-[32px] bg-[#0f0f1a] p-2.5 shadow-xl">
           <div className="rounded-[24px] bg-white overflow-hidden h-[560px] overflow-y-auto">
-            <div className="bg-[#1e40af] text-white px-4 pt-6 pb-4">
+            <div className="bg-[#c8151d] text-white px-4 pt-6 pb-4">
               <p className="text-[11px] opacity-80">Deliver to · Home</p>
-              <p className="font-semibold">FreshMart</p>
-              <div className="mt-2 h-8 rounded-lg bg-white/15 text-[11px] flex items-center px-3 opacity-90">Search groceries…</div>
+              <p className="font-semibold">Jovanne’s Meat Shop</p>
+              <div className="mt-2 h-8 rounded-lg bg-white/15 text-[11px] flex items-center px-3 opacity-90">Search beef, pork, chicken…</div>
             </div>
             <div className="p-3 space-y-4">
               {sections.filter((x) => x.on).map((sec) => {
@@ -233,7 +234,7 @@ function HomeTab({ editable }: { editable: boolean }) {
                     <div className="flex gap-2">
                       {s.products.filter((p) => p.status === 'active').slice(DEFAULT_SECTIONS.indexOf(sec.name) * 3, DEFAULT_SECTIONS.indexOf(sec.name) * 3 + 3).map((p) => (
                         <div key={p.id} className="flex-1 rounded-lg border border-gray-100 p-2">
-                          <div className="text-2xl text-center">{p.image}</div>
+                          <div className="text-2xl text-center"><ProductImage image={p.image} /></div>
                           <p className="text-[9px] text-gray-700 truncate mt-1">{p.name}</p>
                         </div>
                       ))}
@@ -255,7 +256,7 @@ function BannerDialog({ banner, onClose }: { banner: Banner | null; onClose: () 
   const s = useStore();
   const [f, setF] = useState({
     title: banner?.title ?? '', subtitle: banner?.subtitle ?? '', color: banner?.color ?? GRADIENTS[0].value,
-    emoji: banner?.emoji ?? '🛒', active: banner?.active ?? true, cityId: banner?.cityId ?? '',
+    emoji: banner?.emoji ?? '🥩', active: banner?.active ?? true, cityId: banner?.cityId ?? '',
   });
   const save = () => {
     if (!f.title.trim()) return toast.error('Title is required');
@@ -269,20 +270,20 @@ function BannerDialog({ banner, onClose }: { banner: Banner | null; onClose: () 
         addAudit(d, { module: 'Promotions', action: 'Create banner', detail: `Banner “${data.title}” (${data.cityId ? cityName(d, data.cityId) : 'all cities'})`, newValue: data.active ? 'active' : 'inactive' });
       }
     });
-    toast.success(banner ? 'Banner updated' : 'Banner created', { description: data.active ? 'Live in the Shopper App now.' : 'Saved as hidden.' });
+    toast.success(banner ? 'Banner updated' : 'Banner created', { description: data.active ? 'Live in the Customer App now.' : 'Saved as hidden.' });
     onClose();
   };
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{banner ? 'Edit banner' : 'New banner'}</DialogTitle>
-          <DialogDescription>Shown at the top of the Shopper App home screen.</DialogDescription>
+          <DialogDescription>Shown at the top of the Customer App home screen.</DialogDescription>
         </DialogHeader>
         <BannerCard b={f} />
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Title" className="col-span-2"><input className={inputClass} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Payday Sale" /></Field>
-          <Field label="Subtitle" className="col-span-2"><input className={inputClass} value={f.subtitle} onChange={(e) => setF({ ...f, subtitle: e.target.value })} placeholder="Up to 20% off pantry staples" /></Field>
+          <Field label="Title" className="col-span-2"><input className={inputClass} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Payday Pork Sale" /></Field>
+          <Field label="Subtitle" className="col-span-2"><input className={inputClass} value={f.subtitle} onChange={(e) => setF({ ...f, subtitle: e.target.value })} placeholder="₱20 off per kg of liempo" /></Field>
           <Field label="Emoji / image"><input className={inputClass} value={f.emoji} onChange={(e) => setF({ ...f, emoji: e.target.value })} /></Field>
           <Field label="City targeting">
             <select className={selectClass} value={f.cityId} onChange={(e) => setF({ ...f, cityId: e.target.value })}>
@@ -295,7 +296,7 @@ function BannerDialog({ banner, onClose }: { banner: Banner | null; onClose: () 
             <div className="flex flex-wrap gap-2">
               {GRADIENTS.map((g) => (
                 <button key={g.value} type="button" title={g.label} onClick={() => setF({ ...f, color: g.value })}
-                  className={cn('w-9 h-9 rounded-lg bg-gradient-to-r ring-offset-2', g.value, f.color === g.value && 'ring-2 ring-[#1e40af]')} />
+                  className={cn('w-9 h-9 rounded-lg bg-gradient-to-r ring-offset-2', g.value, f.color === g.value && 'ring-2 ring-[#c8151d]')} />
               ))}
             </div>
           </div>
@@ -317,7 +318,7 @@ function PagesTab({ editable }: { editable: boolean }) {
     { name: 'Terms of Service', version: '3.2', updated: '2026-09-14', reaccept: true },
     { name: 'Privacy Policy', version: '2.4', updated: '2026-08-01', reaccept: true },
     { name: 'FAQ', version: '5.0', updated: '2026-10-28', reaccept: false },
-    { name: 'About FreshMart', version: '1.3', updated: '2026-03-02', reaccept: false },
+    { name: 'About Jovanne’s Meat Shop', version: '1.3', updated: '2026-03-02', reaccept: false },
     { name: 'Contact us', version: '1.1', updated: '2026-05-19', reaccept: false },
   ]);
   const publish = (i: number) => {
@@ -325,11 +326,11 @@ function PagesTab({ editable }: { editable: boolean }) {
     const [maj, min] = p.version.split('.').map(Number);
     const nv = `${maj}.${min + 1}`;
     setPages(pages.map((x, k) => (k === i ? { ...x, version: nv, updated: new Date().toISOString().slice(0, 10) } : x)));
-    mutate((d) => addAudit(d, { module: 'Promotions', action: 'Publish page', detail: `${p.name} published${p.reaccept ? ' — shoppers must re-accept on next open' : ''}`, oldValue: `v${p.version}`, newValue: `v${nv}` }));
-    toast.success(`${p.name} v${nv} published`, { description: p.reaccept ? 'Shoppers will be asked to accept the new version.' : undefined });
+    mutate((d) => addAudit(d, { module: 'Promotions', action: 'Publish page', detail: `${p.name} published${p.reaccept ? ' — customers must re-accept on next open' : ''}`, oldValue: `v${p.version}`, newValue: `v${nv}` }));
+    toast.success(`${p.name} v${nv} published`, { description: p.reaccept ? 'Customers will be asked to accept the new version.' : undefined });
   };
   return (
-    <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><FileText className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />Static pages</h2>} bodyClass="p-0">
+    <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><FileText className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />Static pages</h2>} bodyClass="p-0">
       <ul className="divide-y divide-gray-100">
         {pages.map((p, i) => (
           <li key={p.name} className="px-5 py-3 flex flex-wrap items-center gap-4">
@@ -352,7 +353,7 @@ function PagesTab({ editable }: { editable: boolean }) {
 // ---------------------------------------------------------------- Brand
 
 function BrandTab({ editable }: { editable: boolean }) {
-  const [brand, setBrand] = useState({ name: 'FreshMart', color: '#1e40af', logo: '🛒', tagline: 'Fresh groceries, delivered fast' });
+  const [brand, setBrand] = useState({ name: 'Jovanne’s Meat Shop', color: '#c8151d', logo: '🥩', tagline: 'Fresh meat, cut your way, delivered cold' });
   const [maintenance, setMaintenance] = useState(false);
   const [maintMsg, setMaintMsg] = useState('We are upgrading our systems. Back by 6:00 AM.');
   const [forced, setForced] = useState(false);
@@ -361,9 +362,9 @@ function BrandTab({ editable }: { editable: boolean }) {
     mutate((d) => addAudit(d, { module: 'Settings', action, detail, oldValue, newValue }));
 
   return (
-    <div className="grid lg:grid-cols-2 gap-5">
-      <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Palette className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />Brand settings</h2>}>
-        <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Palette className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />Brand settings</h2>}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="App name"><input className={inputClass} disabled={!editable} value={brand.name} onChange={(e) => setBrand({ ...brand, name: e.target.value })} /></Field>
           <Field label="Logo (emoji / upload)"><input className={inputClass} disabled={!editable} value={brand.logo} onChange={(e) => setBrand({ ...brand, logo: e.target.value })} /></Field>
           <Field label="Primary colour">
@@ -374,7 +375,7 @@ function BrandTab({ editable }: { editable: boolean }) {
           </Field>
           <Field label="Tagline"><input className={inputClass} disabled={!editable} value={brand.tagline} onChange={(e) => setBrand({ ...brand, tagline: e.target.value })} /></Field>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-4">
+        <div className="mt-4 grid grid-cols-1 min-[420px]:grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-gray-500 mb-1.5">Splash screen</p>
             <div className="rounded-2xl h-48 flex flex-col items-center justify-center text-white" style={{ background: brand.color }}>
@@ -393,16 +394,16 @@ function BrandTab({ editable }: { editable: boolean }) {
             </div>
           </div>
         </div>
-        {editable && <Button className="mt-4" onClick={() => { audit('Brand settings', `Brand updated: ${brand.name} · ${brand.color}`); toast.success('Brand published', { description: 'Apps pick it up on next launch — no store release.' }); }}><Save className="w-4 h-4" strokeWidth={1.75} />Publish brand</Button>}
+        {editable && <Button className="mt-4" onClick={() => { audit('Brand settings', `Brand updated: ${brand.name} · ${brand.color}`); toast.success('Brand published', { description: 'Apps pick it up on next launch — no app release needed.' }); }}><Save className="w-4 h-4" strokeWidth={1.75} />Publish brand</Button>}
       </Panel>
 
-      <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Wrench className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />App status</h2>}>
+      <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Wrench className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />App status</h2>}>
         <div className="space-y-5">
           <div className="flex items-start gap-3">
-            <Toggle checked={maintenance} disabled={!editable} onChange={(v) => { setMaintenance(v); audit('Maintenance mode', `Maintenance mode ${v ? 'ON' : 'OFF'}`, v ? 'off' : 'on', v ? 'on' : 'off'); toast[v ? 'warning' : 'success'](v ? 'Maintenance mode is ON' : 'Maintenance mode is OFF', { description: v ? 'Shoppers see the maintenance screen.' : 'Apps are open again.' }); }} label="Maintenance mode" />
+            <Toggle checked={maintenance} disabled={!editable} onChange={(v) => { setMaintenance(v); audit('Maintenance mode', `Maintenance mode ${v ? 'ON' : 'OFF'}`, v ? 'off' : 'on', v ? 'on' : 'off'); toast[v ? 'warning' : 'success'](v ? 'Maintenance mode is ON' : 'Maintenance mode is OFF', { description: v ? 'Customers see the maintenance screen.' : 'Apps are open again.' }); }} label="Maintenance mode" />
             <div className="flex-1">
               <p className="font-medium text-sm text-gray-900">Maintenance mode</p>
-              <p className="text-xs text-gray-500">Shopper App shows a maintenance screen; ordering is blocked.</p>
+              <p className="text-xs text-gray-500">Customer App shows a maintenance screen; ordering is blocked.</p>
               <input className={cn(inputClass, 'w-full mt-2')} disabled={!editable} value={maintMsg} onChange={(e) => setMaintMsg(e.target.value)} />
             </div>
           </div>
@@ -419,7 +420,7 @@ function BrandTab({ editable }: { editable: boolean }) {
               <span className="text-4xl">{maintenance ? '🛠️' : '⬆️'}</span>
               <p className="font-semibold mt-2 text-gray-900">{maintenance ? 'We’ll be right back' : 'Update required'}</p>
               <p className="text-xs text-gray-500 mt-1">{maintenance ? maintMsg : `Please update ${brand.name} to v${minVersion} or later to keep ordering.`}</p>
-              <p className="text-[10px] text-gray-400 mt-3">Preview of the shopper screen</p>
+              <p className="text-[10px] text-gray-400 mt-3">Preview of the customer screen</p>
             </div>
           )}
         </div>
@@ -431,13 +432,13 @@ function BrandTab({ editable }: { editable: boolean }) {
 // ---------------------------------------------------------------- Notifications
 
 const VARS = ['{customer_name}', '{order_number}', '{eta}', '{branch_name}', '{total}'];
-const SAMPLE: Record<string, string> = { '{customer_name}': 'Maria', '{order_number}': 'MTN-10234', '{eta}': '3:45 PM', '{branch_name}': 'Matina', '{total}': '₱1,284.50' };
+const SAMPLE: Record<string, string> = { '{customer_name}': 'Maria', '{order_number}': 'DGS-10234', '{eta}': '3:45 PM', '{branch_name}': 'Digos', '{total}': '₱1,284.50' };
 
 function NotifTab({ editable }: { editable: boolean }) {
   const [tpls, setTpls] = useState([
-    { id: 'placed', name: 'Order placed', channels: { push: true, sms: false, email: true }, title: 'Order received 🛒', body: 'Hi {customer_name}, we got your order {order_number}. We’ll confirm it shortly.' },
+    { id: 'placed', name: 'Order placed', channels: { push: true, sms: false, email: true }, title: 'Order received 🥩', body: 'Hi {customer_name}, we got your order {order_number}. We’ll confirm it shortly.' },
     { id: 'confirmed', name: 'Order confirmed', channels: { push: true, sms: true, email: false }, title: 'Order confirmed ✅', body: '{branch_name} is preparing order {order_number}. Estimated arrival {eta}.' },
-    { id: 'ofd', name: 'Out for delivery', channels: { push: true, sms: true, email: false }, title: 'On the way 🛵', body: 'Your rider is on the way with {order_number}. Arriving around {eta}.' },
+    { id: 'ofd', name: 'Out for delivery', channels: { push: true, sms: true, email: false }, title: 'On the way 🛵', body: 'Your rider is on the way with {order_number}, packed cold in an insulated bag. Arriving around {eta}.' },
     { id: 'delivered', name: 'Delivered', channels: { push: true, sms: false, email: true }, title: 'Delivered 🎉', body: 'Enjoy, {customer_name}! Order {order_number} ({total}) was delivered. Rate your experience.' },
   ]);
   const [sel, setSel] = useState('placed');
@@ -447,17 +448,17 @@ function NotifTab({ editable }: { editable: boolean }) {
   const render = (str: string) => VARS.reduce((a, v) => a.split(v).join(SAMPLE[v]), str);
 
   return (
-    <div className="grid lg:grid-cols-[240px_1fr_300px] gap-5 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_300px] gap-5 items-start">
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2">
         {tpls.map((x) => (
-          <button key={x.id} onClick={() => setSel(x.id)} className={cn('w-full text-left px-3 py-2 rounded-lg text-sm', sel === x.id ? 'bg-[#1e40af]/10 text-[#1e40af] font-medium' : 'text-gray-700 hover:bg-gray-50')}>
+          <button key={x.id} onClick={() => setSel(x.id)} className={cn('w-full text-left px-3 py-2 rounded-lg text-sm', sel === x.id ? 'bg-[#c8151d]/10 text-[#c8151d] font-medium' : 'text-gray-700 hover:bg-gray-50')}>
             {x.name}
             <span className="block text-[10px] text-gray-400">{Object.entries(x.channels).filter(([, v]) => v).map(([k]) => k.toUpperCase()).join(' · ')}</span>
           </button>
         ))}
       </div>
 
-      <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Bell className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />{t.name}</h2>}>
+      <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Bell className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />{t.name}</h2>}>
         <div className="space-y-3">
           <div className="flex gap-4">
             {(['push', 'sms', 'email'] as const).map((c) => (
@@ -469,7 +470,7 @@ function NotifTab({ editable }: { editable: boolean }) {
           <div className="flex flex-wrap gap-1.5 items-center">
             <span className="text-xs text-gray-500">Insert variable:</span>
             {VARS.map((v) => (
-              <button key={v} disabled={!editable} onClick={() => upd({ body: `${t.body} ${v}` })} className="text-[11px] font-mono rounded bg-gray-100 hover:bg-[#1e40af]/10 hover:text-[#1e40af] px-1.5 py-0.5">{v}</button>
+              <button key={v} disabled={!editable} onClick={() => upd({ body: `${t.body} ${v}` })} className="text-[11px] font-mono rounded bg-gray-100 hover:bg-[#c8151d]/10 hover:text-[#c8151d] px-1.5 py-0.5">{v}</button>
             ))}
           </div>
           {editable && <Button onClick={() => { mutate((d) => addAudit(d, { module: 'Settings', action: 'Notification template', detail: `Template “${t.name}” updated (${Object.entries(t.channels).filter(([, v]) => v).map(([k]) => k).join(', ')})` })); toast.success(`“${t.name}” template saved`); }}><Save className="w-4 h-4" strokeWidth={1.75} />Save template</Button>}
@@ -480,20 +481,20 @@ function NotifTab({ editable }: { editable: boolean }) {
         <div>
           <p className="text-xs font-medium text-gray-500 mb-1.5">Push preview</p>
           <div className="rounded-2xl bg-gray-900/90 p-3 text-white shadow-lg">
-            <div className="flex items-center gap-2 text-[10px] opacity-70"><span className="w-4 h-4 rounded bg-[#1e40af] flex items-center justify-center text-[9px]">🛒</span>FRESHMART · now</div>
+            <div className="flex items-center gap-2 text-[10px] opacity-70"><span className="w-4 h-4 rounded bg-[#c8151d] flex items-center justify-center text-[9px]">🥩</span>FRESHMART MEATS · now</div>
             <p className="text-sm font-semibold mt-1">{render(t.title)}</p>
             <p className="text-xs opacity-90 mt-0.5">{render(t.body)}</p>
           </div>
           {t.channels.sms && (
             <>
               <p className="text-xs font-medium text-gray-500 mt-3 mb-1.5">SMS preview</p>
-              <div className="rounded-2xl rounded-bl-sm bg-gray-100 p-3 text-xs text-gray-800">FreshMart: {render(t.body)}</div>
+              <div className="rounded-2xl rounded-bl-sm bg-gray-100 p-3 text-xs text-gray-800">Jovanne’s Meat Shop: {render(t.body)}</div>
             </>
           )}
         </div>
-        <Panel title={<h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><Moon className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />Quiet hours</h2>}>
+        <Panel title={<h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><Moon className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />Quiet hours</h2>}>
           <label className="flex items-center gap-2 text-sm mb-3"><Toggle size="sm" disabled={!editable} checked={quiet.on} onChange={(v) => setQuiet({ ...quiet, on: v })} label="Quiet hours" />Hold promotional pushes</label>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input type="time" className={inputClass} disabled={!editable || !quiet.on} value={quiet.from} onChange={(e) => setQuiet({ ...quiet, from: e.target.value })} />
             <span className="text-gray-400 text-sm">to</span>
             <input type="time" className={inputClass} disabled={!editable || !quiet.on} value={quiet.to} onChange={(e) => setQuiet({ ...quiet, to: e.target.value })} />

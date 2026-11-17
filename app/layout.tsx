@@ -1,25 +1,31 @@
-import type { Metadata } from 'next';
-import { Inter, IBM_Plex_Sans } from 'next/font/google';
+import type { Metadata, Viewport } from 'next';
+import { Inter, Oswald, Lobster } from 'next/font/google';
 import { Toaster } from 'sonner';
 import './globals.css';
 import { StoreProvider } from '@/src/lib/store';
 
-// Two-font system per LAP_IT_DESIGN_SYSTEM.md (same as the CRM) — Inter for
-// body/UI/forms, IBM Plex Sans for display headings.
+// Jovanne's Meat Shop brand fonts:
+// Inter for body/UI/forms, Oswald (condensed block letters, like "JOVANNE'S" in the logo)
+// for headings, Lobster (script, like "Meat Shop") for the wordmark only.
 const inter = Inter({ variable: '--font-inter', subsets: ['latin'], weight: ['400', '500', '600', '700'] });
-const ibmPlexSans = IBM_Plex_Sans({ variable: '--font-ibm-plex-sans', subsets: ['latin'], weight: ['400', '500', '600', '700'] });
+const oswald = Oswald({ variable: '--font-oswald', subsets: ['latin'], weight: ['400', '500', '600', '700'] });
+const lobster = Lobster({ variable: '--font-lobster', subsets: ['latin'], weight: ['400'] });
 
 export const metadata: Metadata = {
-  title: { default: 'FreshMart Platform', template: '%s | FreshMart Platform' },
-  description: 'Multi-Branch Supermarket Delivery & Ordering Platform',
+  title: { default: 'Jovanne’s Meat Shop', template: '%s | Jovanne’s Meat Shop' },
+  description: 'Premium quality meats from Jovanne’s Meat Shop, Digos City — order online for delivery or pickup.',
+  icons: { icon: '/jovannes-icon.png', apple: '/jovannes-icon.png' },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#2a2322',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${ibmPlexSans.variable} h-full antialiased`}>
-      <head>
-        <meta name="theme-color" content="#1e40af" />
-      </head>
+    <html lang="en" className={`${inter.variable} ${oswald.variable} ${lobster.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <StoreProvider>{children}</StoreProvider>
         <Toaster richColors position="top-right" closeButton />

@@ -54,13 +54,13 @@ export default function SuperAdminAccessPage() {
       </p>
 
       <Panel
-        title={<span className="text-sm text-gray-600"><b className="text-[#0f172a]">{ALL.length - blocked.size}</b> of {ALL.length} actions allowed</span>}
+        title={<span className="text-sm text-gray-600"><b className="text-[#2a2322]">{ALL.length - blocked.size}</b> of {ALL.length} actions allowed</span>}
         action={
           <div className="flex gap-2">
             <button disabled={!dirty} onClick={() => setEdit(null)}
               className="h-9 px-3 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40">Discard</button>
             <button disabled={!dirty} onClick={save}
-              className="h-9 px-4 rounded-lg bg-[#0f172a] text-white text-sm font-medium hover:bg-[#1e293b] disabled:opacity-40">Save</button>
+              className="h-9 px-4 rounded-lg bg-[#2a2322] text-white text-sm font-medium hover:bg-[#3d3432] disabled:opacity-40">Save</button>
           </div>
         }
         bodyClass="p-0 overflow-x-auto"

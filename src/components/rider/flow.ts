@@ -1,5 +1,5 @@
 // Rider-app job flow helpers. Progress steps are stored as order timeline notes,
-// so the Order Desk, Dispatch Map and Shopper App see every step live.
+// so the Order Desk, Dispatch Map and the customer’s order tracking page see every step live.
 
 import type { AppState, Order, Rider } from '@/src/lib/types';
 import { addAudit, addNotification, mutate, uid } from '@/src/lib/store';
@@ -91,7 +91,7 @@ export function sendSos(r: Rider, o?: Order) {
   });
 }
 
-/** Rider ↔ shopper chat through the masked in-app channel. */
+/** Rider ↔ customer chat through the masked chat channel. */
 export function sendRiderChat(o: Order, r: Rider, text: string) {
   mutate((d) => {
     let cv = d.conversations.find((c) => c.kind === 'rider' && c.orderId === o.id);

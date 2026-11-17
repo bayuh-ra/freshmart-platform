@@ -22,6 +22,9 @@ import { PERMISSION_ACTIONS, PERMISSION_MODULES } from '@/src/lib/seed';
 import type { AppState, Role, StaffUser } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
 
+/** Phase 1: fixed roles (Super Admin / Admin / Cashier). Flip to true in Phase 2 to allow creating, cloning and deleting roles. */
+const CUSTOM_ROLES = false;
+
 const MODULE_LABEL: Record<string, string> = {
   orders: 'Orders', catalog: 'Catalog', pricing: 'Pricing', inventory: 'Inventory', riders: 'Riders', customers: 'Customers',
   promotions: 'Promotions', support: 'Support', reports: 'Reports', settings: 'Settings', users: 'Users & Roles',
@@ -45,7 +48,7 @@ export default function UsersPage() {
   return (
     <DashboardLayout title="Users & Roles" eyebrow="Administration" hideBranch>
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-        <TabsList>
+        <TabsList className="max-w-full overflow-x-auto overflow-y-hidden justify-start">
           <TabsTrigger value="users">Users ({s.staff.length})</TabsTrigger>
           <TabsTrigger value="roles">Roles ({s.roles.length})</TabsTrigger>
           <TabsTrigger value="matrix">Permission matrix</TabsTrigger>
@@ -87,9 +90,9 @@ function UsersTab({ editable }: { editable: boolean }) {
       <Panel bodyClass="p-0">
         <div className="p-4 pb-0">
           <Toolbar>
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" strokeWidth={1.75} />
-              <input className={cn(inputClass, 'pl-8 w-64')} placeholder="Search name or email" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input className={cn(inputClass, 'pl-8 w-full sm:w-64')} placeholder="Search name or email" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
             <select className={selectClass} value={roleF} onChange={(e) => setRoleF(e.target.value)}>
               <option value="all">All roles</option>
@@ -122,9 +125,9 @@ function UsersTab({ editable }: { editable: boolean }) {
                 <TableRow key={u.id}>
                   <TableCell className="pl-5">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#1e40af]/10 text-[#1e40af] text-xs font-semibold flex items-center justify-center">{u.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}</div>
+                      <div className="w-8 h-8 rounded-full bg-[#c8151d]/10 text-[#c8151d] text-xs font-semibold flex items-center justify-center">{u.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}</div>
                       <div>
-                        <p className="font-medium text-gray-900">{u.name}{isMe && <span className="ml-1.5 text-[10px] text-[#1e40af] font-semibold">YOU</span>}</p>
+                        <p className="font-medium text-gray-900">{u.name}{isMe && <span className="ml-1.5 text-[10px] text-[#c8151d] font-semibold">YOU</span>}</p>
                         <p className="text-xs text-gray-500">{u.email}</p>
                       </div>
                     </div>
@@ -193,17 +196,17 @@ function UsersTab({ editable }: { editable: boolean }) {
 function SensitiveRules() {
   const s = useStore();
   const rules = [
-    { key: 'refundApprovalAbove', label: 'Refunds above', fmt: (v: number) => peso(v), who: 'need Branch Manager approval (orders.approve)' },
-    { key: 'priceApprovalPct', label: 'Price changes above', fmt: (v: number) => `${v}%`, who: 'need City Manager approval (pricing.approve)' },
-    { key: 'adjustApprovalUnits', label: 'Stock adjustments above', fmt: (v: number) => `${v} units`, who: 'need Branch Manager approval (inventory.approve)' },
+    { key: 'refundApprovalAbove', label: 'Refunds above', fmt: (v: number) => peso(v), who: 'need an Admin to approve (orders.approve)' },
+    { key: 'priceApprovalPct', label: 'Price changes above', fmt: (v: number) => `${v}%`, who: 'need an Admin to approve (pricing.approve)' },
+    { key: 'adjustApprovalUnits', label: 'Stock adjustments above', fmt: (v: number) => `${v} units`, who: 'need an Admin to approve (inventory.approve)' },
   ];
   return (
     <Panel title="Sensitive-action rules" action={<Button size="sm" variant="outline" asChild><Link href="/admin/settings">Edit in Settings</Link></Button>}>
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {rules.map((r) => (
-          <Link key={r.key} href="/admin/settings" className="rounded-lg border border-gray-100 bg-gray-50 p-4 hover:border-[#1e40af]/30 transition-colors">
+          <Link key={r.key} href="/admin/settings" className="rounded-lg border border-gray-100 bg-gray-50 p-4 hover:border-[#c8151d]/30 transition-colors">
             <p className="text-xs text-gray-500">{r.label}</p>
-            <p className="text-2xl font-bold text-[#1e40af] mt-1">{r.fmt(Number(getSetting(s, r.key)) || 0)}</p>
+            <p className="text-2xl font-bold text-[#c8151d] mt-1">{r.fmt(Number(getSetting(s, r.key)) || 0)}</p>
             <p className="text-xs text-gray-500 mt-1">{r.who}</p>
           </Link>
         ))}
@@ -214,7 +217,7 @@ function SensitiveRules() {
 
 function InviteDialog({ onClose }: { onClose: () => void }) {
   const s = useStore();
-  const [f, setF] = useState({ name: '', email: '', roleId: 'role-cashier', scopeType: 'branches' as StaffUser['scope']['type'], ids: [] as string[] });
+  const [f, setF] = useState({ name: '', email: '', roleId: 'role-cashier', scopeType: 'branches' as StaffUser['scope']['type'], ids: (s.branches.length === 1 ? [s.branches[0].id] : []) as string[] });
   const options = f.scopeType === 'cities' ? s.cities.map((c) => ({ id: c.id, name: c.name })) : s.branches.map((b) => ({ id: b.id, name: b.name }));
   const save = () => {
     if (!f.name.trim() || !/^\S+@\S+\.\S+$/.test(f.email)) return toast.error('Enter a name and a valid email');
@@ -238,7 +241,7 @@ function InviteDialog({ onClose }: { onClose: () => void }) {
         </DialogHeader>
         <div className="grid gap-3">
           <Field label="Full name"><input className={inputClass} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Juan dela Cruz" /></Field>
-          <Field label="Email"><input className={inputClass} type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="juan@freshmart.ph" /></Field>
+          <Field label="Email"><input className={inputClass} type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="juan@jovannesmeatshop.ph" /></Field>
           <Field label="Role">
             <select className={selectClass} value={f.roleId} onChange={(e) => setF({ ...f, roleId: e.target.value })}>
               {s.roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -254,7 +257,7 @@ function InviteDialog({ onClose }: { onClose: () => void }) {
               {options.map((o) => {
                 const on = f.ids.includes(o.id);
                 return (
-                  <label key={o.id} className={cn('flex items-center gap-2 text-sm rounded-lg border px-3 py-1.5 cursor-pointer', on ? 'border-[#1e40af] bg-[#1e40af]/5' : 'border-gray-200')}>
+                  <label key={o.id} className={cn('flex items-center gap-2 text-sm rounded-lg border px-3 py-1.5 cursor-pointer', on ? 'border-[#c8151d] bg-[#c8151d]/5' : 'border-gray-200')}>
                     <Checkbox checked={on} onCheckedChange={() => setF({ ...f, ids: on ? f.ids.filter((x) => x !== o.id) : [...f.ids, o.id] })} />{o.name}
                   </label>
                 );
@@ -277,7 +280,7 @@ function ActivityDialog({ user, onClose }: { user: StaffUser; onClose: () => voi
   const entries = s.audit.filter((a) => a.user === user.name || a.detail.includes(user.name) || a.detail.includes(user.email)).slice(0, 50);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Activity — {user.name}</DialogTitle>
           <DialogDescription>Actions by or about {first}, from the immutable audit log.</DialogDescription>
@@ -318,33 +321,33 @@ function RolesTab({ editable, onOpenMatrix }: { editable: boolean; onOpenMatrix:
   };
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">A role is a named bundle of permissions. Create new user types any time — no code change.</p>
-        {editable && <Button onClick={() => setDlg({ mode: 'new' })}><Plus className="w-4 h-4" strokeWidth={1.75} />Create role</Button>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-gray-500">Phase 1 uses three fixed roles: <b>Super Admin</b>, <b>Admin</b> and <b>Cashier</b>. Riders sign in to the Rider App. Custom roles come in Phase 2.</p>
+        {editable && CUSTOM_ROLES && <Button onClick={() => setDlg({ mode: 'new' })}><Plus className="w-4 h-4" strokeWidth={1.75} />Create role</Button>}
       </div>
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {s.roles.map((r) => {
           const users = s.staff.filter((u) => u.roleId === r.id).length;
           return (
-            <div key={r.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-3">
+            <div key={r.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5 flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  {r.protected ? <Lock className="w-4 h-4 text-amber-600" strokeWidth={1.75} /> : <ShieldCheck className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} />}
+                  {r.protected ? <Lock className="w-4 h-4 text-amber-600" strokeWidth={1.75} /> : <ShieldCheck className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} />}
                   {r.name}
                 </h3>
                 <Pill className="capitalize">{r.scopeType === 'all' ? 'All branches' : r.scopeType}</Pill>
               </div>
               <p className="text-xs text-gray-500 flex-1">{r.description}</p>
               <div className="flex gap-4 text-sm">
-                <span><b className="text-[#1e40af]">{r.permissions.length}</b> <span className="text-gray-500">permissions</span></span>
-                <span><b className="text-[#1e40af]">{users}</b> <span className="text-gray-500">users</span></span>
+                <span><b className="text-[#c8151d]">{r.permissions.length}</b> <span className="text-gray-500">permissions</span></span>
+                <span><b className="text-[#c8151d]">{users}</b> <span className="text-gray-500">users</span></span>
               </div>
               <div className="flex flex-wrap gap-1 border-t border-gray-100 pt-3">
                 <Button size="sm" variant="outline" onClick={onOpenMatrix}><Eye className="w-3.5 h-3.5" strokeWidth={1.75} />Permissions</Button>
                 {editable && <>
                   <Button size="sm" variant="ghost" disabled={r.protected} onClick={() => setDlg({ mode: 'rename', role: r })}><Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />Rename</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setDlg({ mode: 'clone', role: r })}><Copy className="w-3.5 h-3.5" strokeWidth={1.75} />Clone</Button>
-                  <Button size="sm" variant="ghost" className="text-[#dc2626]" disabled={r.protected} onClick={() => del(r)}><Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} /></Button>
+                  {CUSTOM_ROLES && <Button size="sm" variant="ghost" onClick={() => setDlg({ mode: 'clone', role: r })}><Copy className="w-3.5 h-3.5" strokeWidth={1.75} />Clone</Button>}
+                  {CUSTOM_ROLES && <Button size="sm" variant="ghost" className="text-[#dc2626]" disabled={r.protected} onClick={() => del(r)}><Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} /></Button>}
                 </>}
               </div>
             </div>
@@ -456,11 +459,11 @@ function MatrixTab({ editable }: { editable: boolean }) {
       </Tip>
       <Panel
         title={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <select className={selectClass} value={role.id} onChange={(e) => setRoleId(e.target.value)}>
               {s.roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
-            <span className="text-sm text-gray-500"><b className="text-[#1e40af]">{(role.protected ? role.permissions : [...draft]).filter((p) => !blocked.has(p)).length}</b> of {PERMISSION_MODULES.length * PERMISSION_ACTIONS.length} permissions</span>
+            <span className="text-sm text-gray-500"><b className="text-[#c8151d]">{(role.protected ? role.permissions : [...draft]).filter((p) => !blocked.has(p)).length}</b> of {PERMISSION_MODULES.length * PERMISSION_ACTIONS.length} permissions</span>
             {role.protected && <Pill className="bg-amber-100 text-amber-800"><Lock className="w-3 h-3" strokeWidth={1.75} />Protected — has every permission the plan allows</Pill>}
           </div>
         }

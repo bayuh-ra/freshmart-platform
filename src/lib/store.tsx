@@ -21,6 +21,12 @@ function load(): AppState {
     if (raw) {
       const parsed = JSON.parse(raw) as AppState;
       if (parsed.version === STATE_VERSION) return parsed;
+      // Saved by a NEWER version of the app (another tab already updated): never overwrite it
+      // with an old seed — reload this tab so it runs the new code instead.
+      if (typeof parsed.version === 'number' && parsed.version > STATE_VERSION && typeof window !== 'undefined') {
+        window.location.reload();
+        return parsed;
+      }
     }
   } catch {
     /* ignore */
@@ -133,7 +139,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-[#1e40af] border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-[#c8151d] border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-gray-500">Loading...</p>
         </div>
       </div>

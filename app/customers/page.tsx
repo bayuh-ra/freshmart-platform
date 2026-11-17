@@ -9,7 +9,8 @@ import {
 import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
 import { AccessDenied, Panel, Pill, StatusBadge, EmptyState, Toolbar, inputClass, selectClass } from '@/src/components/common';
 import { mutate, addAudit, useStore, currentUserName } from '@/src/lib/store';
-import { can, cityName, peso, pesoShort, fmtDate, fmtDateTime, timeAgo, branchName, exportCsv } from '@/src/lib/logic';
+import { can, cityName, peso, pesoShort, fmtDate, fmtDateTime, timeAgo, exportCsv } from '@/src/lib/logic';
+import { useNow } from '@/src/components/reports/ui';
 import type { AppState, Customer } from '@/src/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/src/components/ui/shadcn/table';
 import { Button } from '@/src/components/ui/shadcn/button';
@@ -49,8 +50,9 @@ export default function CustomersPage() {
   const [openId, setOpenId] = useState<string | null>(null);
 
   const stats = useMemo(() => customerStats(s), [s]);
+  const now = useNow();
   const isHigh = (c: Customer) => c.group === 'High spenders' || (stats.get(c.id)?.spend ?? 0) >= HIGH_SPENDER;
-  const isInactive = (c: Customer) => { const l = stats.get(c.id)?.last; return !l || Date.now() - new Date(l).getTime() > 30 * DAY; };
+  const isInactive = (c: Customer) => { const l = stats.get(c.id)?.last; return !l || now - new Date(l).getTime() > 30 * DAY; };
   const groups = [...new Set(s.customers.map((c) => c.group).filter(Boolean))] as string[];
 
   if (!can(s, 'customers.view')) {
@@ -74,7 +76,7 @@ export default function CustomersPage() {
   const segments = [
     { key: 'high' as Segment, label: 'High spenders', sub: `${pesoShort(HIGH_SPENDER)}+ lifetime or tagged`, count: s.customers.filter(isHigh).length, icon: Crown, color: 'text-amber-500' },
     { key: 'inactive' as Segment, label: 'Inactive 30 days', sub: 'no order in the last 30 days', count: s.customers.filter(isInactive).length, icon: Moon, color: 'text-gray-500' },
-    ...s.cities.map((ct) => ({ key: `city:${ct.id}` as Segment, label: ct.name, sub: ct.region, count: s.customers.filter((c) => c.cityId === ct.id).length, icon: Building2, color: 'text-[#1e40af]' })),
+    ...s.cities.map((ct) => ({ key: `city:${ct.id}` as Segment, label: ct.name, sub: ct.region, count: s.customers.filter((c) => c.cityId === ct.id).length, icon: Building2, color: 'text-[#c8151d]' })),
   ];
 
   const exportList = () => {
@@ -88,21 +90,21 @@ export default function CustomersPage() {
   return (
     <DashboardLayout title="Customers" eyebrow="CRM" hideBranch>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Customers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">App, walk-in and phone customers in one database · {s.customers.length} total · {s.customers.filter((c) => c.blocked).length} blocked</p>
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Customers</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Every Jovanne’s Meat Shop customer in one database · {s.customers.length} total · {s.customers.filter((c) => c.blocked).length} blocked</p>
         </div>
         <Button variant="outline" onClick={exportList}><Download className="w-4 h-4" strokeWidth={1.75} /> Export list</Button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-        <div className="xl:col-span-3">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 sm:gap-6">
+        <div className="xl:col-span-3 min-w-0">
           <Panel bodyClass="p-0">
             <div className="p-4 pb-0">
               <Toolbar>
-                <div className="relative">
+                <div className="relative w-full sm:w-auto">
                   <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5" />
-                  <input className={cn(inputClass, 'pl-8 w-64')} placeholder="Search name, mobile, email" value={q} onChange={(e) => setQ(e.target.value)} />
+                  <input className={cn(inputClass, 'pl-8 w-full sm:w-64')} placeholder="Search name, mobile, email" value={q} onChange={(e) => setQ(e.target.value)} />
                 </div>
                 <select className={selectClass} value={city} onChange={(e) => setCity(e.target.value)}>
                   <option value="all">All cities</option>
@@ -125,7 +127,7 @@ export default function CustomersPage() {
                   <option value="blocked">Blocked only</option>
                 </select>
                 {segment !== 'all' && (
-                  <Pill className="bg-blue-50 text-[#1e40af]">
+                  <Pill className="bg-red-50 text-[#c8151d]">
                     Segment: {segments.find((x) => x.key === segment)?.label}
                     <button onClick={() => setSegment('all')} aria-label="Clear segment"><X className="w-3 h-3" /></button>
                   </Pill>
@@ -160,7 +162,7 @@ export default function CustomersPage() {
                               {c.name}
                               {c.blocked && <Pill className="bg-red-100 text-red-700"><Ban className="w-3 h-3" /> Blocked</Pill>}
                             </div>
-                            <div className="text-xs text-gray-400">{c.mobile} · {c.email}</div>
+                            <div className="text-xs text-gray-400 whitespace-nowrap">{c.mobile} · {c.email}</div>
                           </div>
                         </div>
                       </TableCell>
@@ -168,7 +170,7 @@ export default function CustomersPage() {
                       <TableCell><Pill>{SOURCE_LABEL[c.source]}</Pill></TableCell>
                       <TableCell>{c.group ? <Pill className="bg-amber-50 text-amber-800">{c.group}</Pill> : <span className="text-gray-300">—</span>}</TableCell>
                       <TableCell className="text-right">{st?.orders ?? 0}</TableCell>
-                      <TableCell className="text-right font-semibold text-[#1e40af]">{pesoShort(st?.spend ?? 0)}</TableCell>
+                      <TableCell className="text-right font-semibold text-[#c8151d]">{pesoShort(st?.spend ?? 0)}</TableCell>
                       <TableCell className="text-right">{c.points.toLocaleString()}</TableCell>
                       <TableCell className="text-right">{c.storeCredit ? peso(c.storeCredit) : <span className="text-gray-300">—</span>}</TableCell>
                       <TableCell className="pr-5 text-gray-500 text-sm">{st?.last ? timeAgo(st.last) : 'Never'}</TableCell>
@@ -189,14 +191,14 @@ export default function CustomersPage() {
                 <li key={sg.key}>
                   <button
                     onClick={() => setSegment(segment === sg.key ? 'all' : sg.key)}
-                    className={cn('w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors', segment === sg.key ? 'bg-blue-50 ring-1 ring-[#1e40af]/30' : 'hover:bg-gray-50')}
+                    className={cn('w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors', segment === sg.key ? 'bg-red-50 ring-1 ring-[#c8151d]/30' : 'hover:bg-gray-50')}
                   >
                     <Icon className={cn('w-4 h-4', sg.color)} strokeWidth={1.75} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900">{sg.label}</p>
                       <p className="text-xs text-gray-400 truncate">{sg.sub}</p>
                     </div>
-                    <span className="text-lg font-bold text-[#1e40af]">{sg.count}</span>
+                    <span className="text-lg font-bold text-[#c8151d]">{sg.count}</span>
                   </button>
                 </li>
               );
@@ -213,7 +215,7 @@ export default function CustomersPage() {
 
 function Avatar({ name, size = 'w-9 h-9 text-sm' }: { name: string; size?: string }) {
   const initials = name.split(' ').map((p) => p[0]).slice(0, 2).join('');
-  return <div className={cn('rounded-full bg-[#1e40af]/10 text-[#1e40af] font-semibold flex items-center justify-center shrink-0', size)}>{initials}</div>;
+  return <div className={cn('rounded-full bg-[#c8151d]/10 text-[#c8151d] font-semibold flex items-center justify-center shrink-0', size)}>{initials}</div>;
 }
 
 function CustomerSheet({ s, id, onClose, stats }: { s: AppState; id: string | null; onClose: () => void; stats: Map<string, { orders: number; spend: number; last?: string }> }) {
@@ -279,7 +281,7 @@ function CustomerSheet({ s, id, onClose, stats }: { s: AppState; id: string | nu
             </div>
           </div>
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-5">
           {c.blocked && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 flex items-start gap-3">
               <Ban className="w-4 h-4 text-[#dc2626] mt-0.5" />
@@ -287,7 +289,7 @@ function CustomerSheet({ s, id, onClose, stats }: { s: AppState; id: string | nu
               {canEdit && <Button size="sm" variant="outline" onClick={reinstate}><ShieldCheck className="w-4 h-4" /> Reinstate</Button>}
             </div>
           )}
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Mini label="Orders" value={st?.orders ?? 0} />
             <Mini label="Lifetime spend" value={pesoShort(st?.spend ?? 0)} />
             <Mini label="Loyalty points" value={c.points.toLocaleString()} icon={<Star className="w-3.5 h-3.5 text-amber-500" />} />
@@ -295,7 +297,7 @@ function CustomerSheet({ s, id, onClose, stats }: { s: AppState; id: string | nu
           </div>
 
           <Tabs defaultValue="profile">
-            <TabsList>
+            <TabsList className="max-w-full overflow-x-auto overflow-y-hidden justify-start">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="orders">Orders ({orders.length})</TabsTrigger>
               <TabsTrigger value="wallet">Vouchers & credit</TabsTrigger>
@@ -304,16 +306,16 @@ function CustomerSheet({ s, id, onClose, stats }: { s: AppState; id: string | nu
             </TabsList>
 
             <TabsContent value="profile" className="space-y-4 pt-2">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <p className="flex items-center gap-2 text-gray-700"><Phone className="w-4 h-4 text-gray-400" />{c.mobile}</p>
-                <p className="flex items-center gap-2 text-gray-700"><Mail className="w-4 h-4 text-gray-400" />{c.email}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <p className="flex items-center gap-2 text-gray-700"><Phone className="w-4 h-4 text-gray-400 shrink-0" />{c.mobile}</p>
+                <p className="flex items-center gap-2 text-gray-700 min-w-0"><Mail className="w-4 h-4 text-gray-400 shrink-0" /><span className="break-all">{c.email}</span></p>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Addresses</p>
                 <ul className="space-y-2">
                   {c.addresses.map((a, i) => (
                     <li key={i} className="flex items-start gap-2 rounded-lg border border-gray-100 p-3 text-sm">
-                      <MapPin className="w-4 h-4 text-[#1e40af] mt-0.5" />
+                      <MapPin className="w-4 h-4 text-[#c8151d] mt-0.5" />
                       <div><p className="font-medium text-gray-900">{a.label}</p><p className="text-gray-600">{a.line}</p>{a.landmark && <p className="text-xs text-gray-400">Landmark: {a.landmark}</p>}</div>
                     </li>
                   ))}
@@ -342,11 +344,11 @@ function CustomerSheet({ s, id, onClose, stats }: { s: AppState; id: string | nu
                 <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
                   {orders.slice(0, 30).map((o) => (
                     <li key={o.id}>
-                      <Link href={`/orders/${o.id}`} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 text-sm">
-                        <span className="font-medium text-[#1e40af] w-24">{o.number}</span>
-                        <span className="text-gray-500 flex-1">{fmtDateTime(o.placedAt)} · {branchName(s, o.branchId)}</span>
+                      <Link href={`/orders/${o.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 hover:bg-gray-50 text-sm">
+                        <span className="font-medium text-[#c8151d] sm:w-24">{o.number}</span>
+                        <span className="text-gray-500 flex-1 min-w-[8rem]">{fmtDateTime(o.placedAt)}</span>
                         <StatusBadge status={o.status} />
-                        <span className="w-24 text-right font-medium">{peso(o.total)}</span>
+                        <span className="sm:w-24 text-right font-medium">{peso(o.total)}</span>
                       </Link>
                     </li>
                   ))}
@@ -355,14 +357,14 @@ function CustomerSheet({ s, id, onClose, stats }: { s: AppState; id: string | nu
             </TabsContent>
 
             <TabsContent value="wallet" className="space-y-4 pt-2">
-              <div className="rounded-lg border border-gray-100 p-4 flex items-center justify-between">
-                <div><p className="text-xs text-gray-500">Store credit balance</p><p className="text-2xl font-bold text-[#1e40af]">{peso(c.storeCredit)}</p></div>
+              <div className="rounded-lg border border-gray-100 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div><p className="text-xs text-gray-500">Store credit balance</p><p className="text-2xl font-bold text-[#c8151d]">{peso(c.storeCredit)}</p></div>
                 {canEdit && <Button size="sm" onClick={() => setCreditOpen(true)}><Wallet className="w-4 h-4" /> Adjust credit</Button>}
               </div>
               {credit.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Credit history</p>
-                  <ul className="space-y-1 text-sm">{credit.map((a) => <li key={a.id} className="flex justify-between text-gray-600"><span>{a.action} — {a.detail}</span><span className="text-xs text-gray-400">{fmtDate(a.at)}</span></li>)}</ul>
+                  <ul className="space-y-1 text-sm">{credit.map((a) => <li key={a.id} className="flex justify-between gap-3 text-gray-600"><span className="min-w-0">{a.action} — {a.detail}</span><span className="text-xs text-gray-400">{fmtDate(a.at)}</span></li>)}</ul>
                 </div>
               )}
               <div>
@@ -387,7 +389,7 @@ function CustomerSheet({ s, id, onClose, stats }: { s: AppState; id: string | nu
                       <Link href={`/support?c=${cv.id}`} className="block rounded-lg border border-gray-100 p-3 hover:bg-gray-50">
                         <div className="flex items-center justify-between text-sm">
                           <span className="font-medium text-gray-900">{cv.category}</span>
-                          <Pill className={cv.status === 'resolved' ? 'bg-green-100 text-green-800' : cv.status === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}>{cv.status}</Pill>
+                          <Pill className={cv.status === 'resolved' ? 'bg-green-100 text-green-800' : cv.status === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}>{cv.status}</Pill>
                         </div>
                         <p className="text-xs text-gray-500 mt-1 truncate">{cv.messages[cv.messages.length - 1]?.text}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{timeAgo(cv.updatedAt)} · {cv.assignedTo ?? 'Unassigned'}</p>
@@ -427,7 +429,7 @@ function Mini({ label, value, icon }: { label: string; value: React.ReactNode; i
   return (
     <div className="rounded-lg border border-gray-100 p-3">
       <p className="text-xs text-gray-500 flex items-center gap-1">{icon}{label}</p>
-      <p className="text-lg font-bold text-[#1e40af] mt-0.5">{value}</p>
+      <p className="text-lg font-bold text-[#c8151d] mt-0.5">{value}</p>
     </div>
   );
 }
@@ -464,7 +466,7 @@ function CreditDialog({ open, onOpenChange, customer }: { open: boolean; onOpenC
         <div className="space-y-3">
           <div className="inline-flex rounded-lg border border-gray-200 p-0.5">
             {(['add', 'deduct'] as const).map((m) => (
-              <button key={m} onClick={() => setMode(m)} className={cn('px-3 py-1.5 text-sm rounded-md font-medium', mode === m ? 'bg-[#1e40af] text-white' : 'text-gray-600')}>{m === 'add' ? 'Add credit' : 'Deduct credit'}</button>
+              <button key={m} onClick={() => setMode(m)} className={cn('px-3 py-1.5 text-sm rounded-md font-medium', mode === m ? 'bg-[#c8151d] text-white' : 'text-gray-600')}>{m === 'add' ? 'Add credit' : 'Deduct credit'}</button>
             ))}
           </div>
           <label className="block"><span className="text-xs font-medium text-gray-600">Amount (₱)</span>
@@ -476,7 +478,7 @@ function CreditDialog({ open, onOpenChange, customer }: { open: boolean; onOpenC
             </select>
           </label>
           {reason === 'Other' && <input className={cn(inputClass, 'w-full')} placeholder="Describe the reason" value={other} onChange={(e) => setOther(e.target.value)} />}
-          {amt > 0 && <p className="text-sm text-gray-600">New balance: <span className="font-semibold text-[#1e40af]">{peso(customer.storeCredit + (mode === 'add' ? amt : -amt))}</span></p>}
+          {amt > 0 && <p className="text-sm text-gray-600">New balance: <span className="font-semibold text-[#c8151d]">{peso(customer.storeCredit + (mode === 'add' ? amt : -amt))}</span></p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

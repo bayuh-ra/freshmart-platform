@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   AlertTriangle, ArrowLeft, Bike, Check, CheckCircle2, Clock, CreditCard, KeyRound, MapPin, MessageSquare, Minus, PackageCheck,
-  Phone, Plus, Printer, QrCode, Receipt, RefreshCcw, Replace, Ruler, Snowflake, Star, StickyNote, Truck, User, X, XCircle, Zap,
+  Phone, PhoneCall, Plus, Printer, QrCode, RefreshCcw, Replace, Ruler, Scissors, Snowflake, Star, StickyNote, Truck, User, X, XCircle, Zap,
 } from 'lucide-react';
 import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
 import { AccessDenied, EmptyState, Panel, PaymentBadge, Pill, StatusBadge, inputClass, selectClass } from '@/src/components/common';
@@ -17,14 +17,16 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/src/components/ui/shadcn/dropdown-menu';
 import { Textarea } from '@/src/components/ui/shadcn/textarea';
-import { addAudit, addNotification, currentUserName, mutate, useStore, useTick } from '@/src/lib/store';
+import { addAudit, addNotification, currentUserName, mutate, useStore } from '@/src/lib/store';
+import { useNow } from '@/src/components/delivery/helpers';
 import {
-  CHANNEL_LABEL, ONLINE_METHODS, PAYMENT_LABEL, STATUS_LABEL, applyStatus, assignRider, available, can, confirmOrder, distanceKm,
-  fmtDateTime, fmtTime, getPrice, getSetting, lineTotal, num, peso, recalc, timeAgo,
+  CHANNEL_LABEL, ONLINE_METHODS, PAYMENT_LABEL, STATUS_LABEL, applyStatus, assignRider, can, confirmOrder, distanceKm,
+  fmtDateTime, fmtTime, getSetting, lineTotal, num, peso, recalc, timeAgo,
 } from '@/src/lib/logic';
-import type { AppState, Order, OrderItem, PaymentMethod, Product } from '@/src/lib/types';
+import type { AppState, Order, OrderItem, PaymentMethod } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
-import { CHANNEL_PILL, RejectDialog } from '../_shared';
+import { CHANNEL_PILL, ColdChainBadge, RejectDialog, cutLabel } from '../_shared';
+import { ProductImage } from '@/src/components/ProductImage';
 
 const ICON = { strokeWidth: 1.75 };
 const PICK_LABEL: Record<OrderItem['pickStatus'], { label: string; cls: string }> = {
@@ -32,7 +34,7 @@ const PICK_LABEL: Record<OrderItem['pickStatus'], { label: string; cls: string }
   picked: { label: 'Picked', cls: 'bg-green-100 text-green-800' },
   short: { label: 'Short', cls: 'bg-amber-100 text-amber-800' },
   out_of_stock: { label: 'Out of stock', cls: 'bg-red-100 text-red-700' },
-  substituted: { label: 'Substitute', cls: 'bg-blue-100 text-blue-800' },
+  substituted: { label: 'Substitute', cls: 'bg-red-100 text-red-800' },
   removed: { label: 'Removed', cls: 'bg-gray-200 text-gray-500' },
 };
 const SUB_PREF: Record<OrderItem['subPref'], string> = { similar: 'Replace with similar', ask: 'Ask me first', refund: "Don't replace — refund" };
@@ -66,7 +68,7 @@ function editOrder(orderId: string, action: string, note: string, fn: (o: Order,
 
 export default function OrderDetailPage() {
   const s = useStore();
-  useTick(5000);
+  const now = useNow(5000);
   const params = useParams<{ id: string }>();
   const id = String(params?.id ?? '');
   const o = s.orders.find((x) => x.id === id);
@@ -76,8 +78,9 @@ export default function OrderDetailPage() {
   const [refundOpen, setRefundOpen] = useState(false);
   const [riderOpen, setRiderOpen] = useState(false);
   const [failOpen, setFailOpen] = useState(false);
-  const [subFor, setSubFor] = useState<number | null>(null);
   const [shortFor, setShortFor] = useState<number | null>(null);
+  /** Actual weight outside tolerance: waiting for "Shopper approved by phone". */
+  const [pendingWeight, setPendingWeight] = useState<{ idx: number; kg: number } | null>(null);
   const [printMode, setPrintMode] = useState<PrintMode>(null);
   const [note, setNote] = useState('');
   const [bags, setBags] = useState<number | ''>('');
@@ -104,7 +107,7 @@ export default function OrderDetailPage() {
   if (!o) {
     return (
       <DashboardLayout title="Order" eyebrow="Order Desk">
-        <Panel><EmptyState title="Order not found" sub="It may have been removed when the demo data was reset." /><div className="text-center"><Link href="/orders" className="text-sm text-[#1e40af] hover:underline">Back to live orders</Link></div></Panel>
+        <Panel><EmptyState title="Order not found" sub="It may have been removed when the demo data was reset." /><div className="text-center"><Link href="/orders" className="text-sm text-[#c8151d] hover:underline">Back to live orders</Link></div></Panel>
       </DashboardLayout>
     );
   }
@@ -121,15 +124,16 @@ export default function OrderDetailPage() {
   const itemsEditable = canEdit && (awaiting || picking);
   const unresolved = o.items.filter((i) => i.pickStatus === 'pending').length;
   const proposed = o.items.filter((i) => i.substitute?.status === 'proposed').length;
-  const coldItems = o.items.filter((i) => i.pickStatus !== 'removed' && i.pickStatus !== 'out_of_stock' && productOf(i.substitute?.status === 'accepted' ? i.substitute.productId : i.productId)?.tags.some((t) => t === 'chilled' || t === 'frozen'));
+  const coldItems = o.items.filter((i) => i.pickStatus !== 'removed' && i.pickStatus !== 'out_of_stock' && (i.storage === 'fresh' || i.storage === 'frozen'));
   const refundable = Math.max(0, Math.round((o.total - o.refundedAmount) * 100) / 100);
   const timeoutMins = num(getSetting(s, 'confirmTimeoutMins', o.branchId)) || 10;
-  const remainingSec = timeoutMins * 60 - (Date.now() - new Date(o.placedAt).getTime()) / 1000;
+  const remainingSec = timeoutMins * 60 - (now - new Date(o.placedAt).getTime()) / 1000;
   const holdHours = num(getSetting(s, 'pickupHoldHours', o.branchId)) || 4;
   const readyAt = [...o.timeline].reverse().find((e) => e.status === 'ready')?.at;
   const holdUntil = readyAt ? new Date(new Date(readyAt).getTime() + holdHours * 3600000) : undefined;
-  const holdExpired = !!holdUntil && holdUntil.getTime() < Date.now();
-  const tolerancePct = 10;
+  const holdExpired = !!holdUntil && holdUntil.getTime() < now;
+  const tolerancePct = num(getSetting(s, 'weightTolerancePct', o.branchId)) || 10;
+  const bagRequired = !!o.coldChain && getSetting(s, 'insulatedBagRequired', o.branchId) === true;
   const by = currentUserName(s);
 
   // ---------- actions ----------
@@ -151,42 +155,57 @@ export default function OrderDetailPage() {
       if (st === 'pending') x.items[idx].substitute = undefined;
       ensurePreparing(d, x);
     });
-    if (st === 'out_of_stock') {
-      const msg = it.subPref === 'refund' ? 'Shopper chose refund — item removed from the total.' : it.subPref === 'similar' ? 'Shopper accepts a similar item — propose a substitute.' : 'Shopper wants to be asked — propose a substitute for approval.';
-      toast.warning(`${it.name} marked out of stock`, { description: msg });
+    if (st === 'out_of_stock' || st === 'removed') {
+      // Phase 1: staff phone the shopper; no in-app substitution request.
+      const msg = it.subPref === 'refund' ? 'Shopper chose refund — item removed from the total.' : `Shopper preference: "${SUB_PREF[it.subPref]}". Call the shopper, then log it with "Called shopper".`;
+      toast.warning(`${it.name} ${st === 'removed' ? 'removed' : 'marked out of stock'}`, { description: msg });
     } else toast.success(`${it.name}: ${PICK_LABEL[st].label}`);
   };
-  const setWeight = (idx: number) => {
-    const it = o.items[idx];
-    const kg = Number(weights[idx]);
-    if (!kg || kg <= 0) { toast.error('Enter the actual weight in kg'); return; }
+
+  /** Effective price per kg / unit (accepted substitute price wins). */
+  const priceOf = (it: OrderItem) => (it.substitute?.status === 'accepted' ? it.substitute.unitPrice : it.unitPrice);
+  const weightCheck = (it: OrderItem, kg: number) => {
     const est = it.estWeightKg ?? 1;
-    const dev = Math.abs(kg - est) / est * 100;
-    editOrder(o.id, 'Actual weight entered', `${it.name}: ${kg.toFixed(3)} kg (est. ${est.toFixed(2)} kg)`, (x, d) => {
+    const devPct = ((kg - est) / est) * 100;
+    const diff = Math.round(priceOf(it) * (kg - est) * 100) / 100;
+    return { est, devPct, diff, within: Math.abs(devPct) <= tolerancePct + 1e-9 };
+  };
+  const applyWeight = (idx: number, kg: number, phoneApproved: boolean) => {
+    const it = o.items[idx];
+    const { est, devPct, diff } = weightCheck(it, kg);
+    const sign = devPct >= 0 ? '+' : '−';
+    const note = `${it.name}: actual ${kg.toFixed(3)} kg (est. ${est.toFixed(2)} kg, ${sign}${Math.abs(devPct).toFixed(1)}%) · price ${diff >= 0 ? '+' : '−'}${peso(Math.abs(diff))}`
+      + (phoneApproved ? ` · outside ${tolerancePct}% tolerance — shopper approved by phone` : ` · within ${tolerancePct}% tolerance, applied automatically`);
+    editOrder(o.id, phoneApproved ? 'Actual weight approved by phone' : 'Actual weight entered', note, (x, d) => {
       x.items[idx].actualWeightKg = kg;
       if (x.items[idx].pickStatus === 'pending') x.items[idx].pickStatus = 'picked';
       ensurePreparing(d, x);
     });
     setWeights((w) => ({ ...w, [idx]: '' }));
-    if (dev > tolerancePct) toast.warning(`Weight is ${dev.toFixed(0)}% off the estimate`, { description: `Above the ${tolerancePct}% tolerance — shopper sees the updated price.` });
-    else toast.success(`${it.name} weighed`, { description: `Line total ${peso(Math.round(it.unitPrice * kg * 100) / 100)}` });
+    setPendingWeight(null);
+    toast.success(`${it.name} weighed`, { description: `Line total ${peso(Math.round((priceOf(it) * kg + (it.cut?.fee ?? 0)) * 100) / 100)}${phoneApproved ? ' · shopper approved by phone' : ''}` });
   };
-  const shopperReply = (idx: number, accept: boolean, timeout = false) => {
+  const setWeight = (idx: number) => {
     const it = o.items[idx];
-    if (!it.substitute) return;
-    const sub = it.substitute;
-    editOrder(o.id, timeout ? 'Substitution timeout' : 'Shopper substitution reply',
-      timeout ? `No reply for ${it.name} — preset preference "${SUB_PREF[it.subPref]}" applied: ${accept ? `accepted ${sub.name}` : 'item refunded'}`
-        : `Shopper ${accept ? 'accepted' : 'rejected'} ${sub.name} for ${it.name}`, (x, d) => {
-        const xi = x.items[idx];
-        if (!xi.substitute) return;
-        xi.substitute.status = accept ? 'accepted' : 'rejected';
-        xi.pickStatus = accept ? 'substituted' : 'removed';
-        if (!x.items.some((i) => i.substitute?.status === 'proposed') && x.status === 'awaiting_shopper') {
-          applyStatus(d, x.id, 'preparing', { by: timeout ? 'System' : x.customerName, note: 'Substitution resolved' });
-        }
-      });
-    toast.success(accept ? `Substitute accepted: ${sub.name}` : `${it.name} refunded`, { description: 'Order total recalculated' });
+    const kg = Math.round(Number(weights[idx]) * 1000) / 1000;
+    if (!kg || kg <= 0) { toast.error('Enter the actual weight in kg'); return; }
+    if (weightCheck(it, kg).within) applyWeight(idx, kg, false);
+    else {
+      setPendingWeight({ idx, kg });
+      toast.warning('Outside weight tolerance', { description: 'Call the shopper to approve the new price before applying.' });
+    }
+  };
+  const calledShopper = (detail?: string) => {
+    const text = `Called shopper${detail ? ` about ${detail}` : ''} (${o.customerMobile})`;
+    mutate((d) => {
+      const x = d.orders.find((y) => y.id === o.id);
+      if (!x) return;
+      const at = new Date().toISOString();
+      x.internalNotes.push({ at, by, text });
+      x.timeline.push({ status: 'note', at, by, note: text });
+      addAudit(d, { module: 'Orders', action: 'Called shopper', detail: `${x.number} — ${text}`, branchId: x.branchId });
+    });
+    toast.success('Call logged', { description: text });
   };
   const assignPicker = (name: string) => {
     editOrder(o.id, 'Picker assigned', name ? `Picker: ${name}` : 'Picker unassigned (cashier picks)', (x) => { x.pickerName = name || undefined; }, { recalc: false });
@@ -201,13 +220,15 @@ export default function OrderDetailPage() {
     toast.success(`Prep time set to ${next} min`, { description: 'Shopper sees the updated estimate' });
   };
   const markReady = () => {
-    if (unresolved || proposed) { toast.error('Finish picking first', { description: `${unresolved} item(s) to pick, ${proposed} substitute(s) awaiting reply` }); return; }
+    if (unresolved || proposed) { toast.error('Finish picking first', { description: `${unresolved} item(s) to pick, ${proposed} substitute(s) still open` }); return; }
+    if (bagRequired && !coldOk) { toast.error('Pack check needed', { description: 'Tick "Packed in insulated bag with ice packs".' }); return; }
     const bagCount = Number(bags) || Math.max(1, Math.ceil(o.items.length / 5));
     mutate((d) => {
       const x = d.orders.find((y) => y.id === o.id);
       if (!x) return;
       x.bagCount = bagCount;
-      x.timeline.push({ status: 'edit', at: new Date().toISOString(), by, note: `Pack check: ${bagCount} bag(s)${coldItems.length ? `, ${coldItems.length} cold item(s) in insulated bag` : ''}, labeled` });
+      if (x.coldChain && coldOk) x.insulatedPacked = true;
+      x.timeline.push({ status: 'edit', at: new Date().toISOString(), by, note: `Pack check: ${bagCount} bag(s)${x.coldChain && coldOk ? ', packed in insulated bag with ice packs' : ''}, labeled` });
       applyStatus(d, o.id, 'ready', { note: o.fulfillment === 'pickup' ? `Ready for pickup — hold ${holdHours}h` : 'Ready — rider assignment' });
       addAudit(d, { module: 'Orders', action: 'Marked ready', detail: `${o.number} · ${bagCount} bag(s)`, branchId: o.branchId });
     });
@@ -276,14 +297,15 @@ export default function OrderDetailPage() {
   return (
     <DashboardLayout title={`Order ${o.number}`} eyebrow="Order Desk">
       <div className="print:hidden">
-        <Link href="/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#1e40af] mb-3"><ArrowLeft className="w-4 h-4" {...ICON} />Live orders</Link>
+        <Link href="/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#c8151d] mb-3"><ArrowLeft className="w-4 h-4" {...ICON} />Live orders</Link>
 
         {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5 mb-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-bold text-gray-900">{o.number}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{o.number}</h1>
+                <ColdChainBadge order={o} />
                 <StatusBadge status={o.status} />
                 <PaymentBadge status={o.paymentStatus} />
                 <Pill className={CHANNEL_PILL[o.channel]}>{CHANNEL_LABEL[o.channel]}</Pill>
@@ -294,6 +316,12 @@ export default function OrderDetailPage() {
                 Placed {fmtDateTime(o.placedAt)} ({timeAgo(o.placedAt)}) · {branch.name} · Slot <span className="font-medium text-gray-700">{o.slot}</span>
                 {o.pickerName && <> · Picker <span className="font-medium text-gray-700">{o.pickerName}</span></>}
               </p>
+              {o.coldChain && (
+                <p className="text-xs text-sky-700 mt-1">
+                  ❄️ Fresh/frozen meat: insulated bag{o.maxDeliveryMins ? ` · deliver within ${o.maxDeliveryMins} min of rider pickup` : ''}
+                  {o.insulatedPacked ? ' · packed ✓' : ''}{o.riderBagConfirmed ? ' · rider confirmed bag ✓' : ''}
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {isOpen && !['ready', 'out_for_delivery', 'failed_delivery'].includes(o.status) && (
@@ -301,7 +329,7 @@ export default function OrderDetailPage() {
                   <Clock className="w-4 h-4 text-gray-400" {...ICON} />
                   <span className="text-gray-500">Prep</span>
                   {canEdit && <button className="p-1 rounded hover:bg-gray-100" onClick={() => changePrep(-5)} aria-label="Decrease prep time"><Minus className="w-3.5 h-3.5" {...ICON} /></button>}
-                  <span className="font-semibold text-[#1e40af] w-12 text-center">{o.prepMinutes} min</span>
+                  <span className="font-semibold text-[#c8151d] w-12 text-center">{o.prepMinutes} min</span>
                   {canEdit && <button className="p-1 rounded hover:bg-gray-100" onClick={() => changePrep(5)} aria-label="Increase prep time"><Plus className="w-3.5 h-3.5" {...ICON} /></button>}
                 </div>
               )}
@@ -323,7 +351,7 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
           <div className="space-y-5 min-w-0">
             {/* Next step panel */}
             {canEdit && <NextStep>
@@ -336,7 +364,7 @@ export default function OrderDetailPage() {
                       {o.paymentStatus === 'pending' && ` · ${PAYMENT_LABEL[o.paymentMethod]} — unpaid`}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="outline" className="text-[#dc2626] border-red-200 hover:bg-red-50" onClick={() => setRejecting(true)}><X className="w-4 h-4" {...ICON} />Reject</Button>
                     <Button onClick={confirm}><CheckCircle2 className="w-4 h-4" {...ICON} />Confirm · prep {o.prepMinutes} min</Button>
                   </div>
@@ -351,8 +379,8 @@ export default function OrderDetailPage() {
               {o.status === 'awaiting_shopper' && (
                 <div className="flex items-start gap-3">
                   <MessageSquare className="w-5 h-5 text-amber-600 mt-0.5" {...ICON} />
-                  <div><p className="font-semibold text-gray-900">Waiting for the shopper to approve {proposed} substitute{proposed !== 1 ? 's' : ''}</p>
-                    <p className="text-sm text-gray-500">Push notification sent. If there is no reply within {String(getSetting(s, 'subResponseMins', o.branchId))} min, the item&apos;s preset preference applies. Use the simulate buttons on the item to demo the reply.</p></div>
+                  <div><p className="font-semibold text-gray-900">Waiting on the shopper</p>
+                    <p className="text-sm text-gray-500">Call the shopper about the unavailable item(s), log the call with &quot;Called shopper&quot;, then mark each item picked, out of stock or removed.</p></div>
                 </div>
               )}
               {o.status === 'preparing' && (
@@ -364,20 +392,27 @@ export default function OrderDetailPage() {
                   </div>
                 ) : (
                   <div>
-                    <p className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><PackageCheck className="w-5 h-5 text-[#1e40af]" {...ICON} />Pack check</p>
-                    <div className="grid sm:grid-cols-3 gap-3 mb-3">
+                    <p className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><PackageCheck className="w-5 h-5 text-[#c8151d]" {...ICON} />Pack check</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                       <label className="text-sm"><span className="block text-xs text-gray-500 mb-1">Bag count</span>
                         <input type="number" min={1} value={bags} placeholder={String(Math.max(1, Math.ceil(o.items.length / 5)))} onChange={(e) => setBags(e.target.value === '' ? '' : Number(e.target.value))} className={cn(inputClass, 'w-full')} /></label>
-                      <label className="flex items-center gap-2 text-sm rounded-lg border border-gray-200 px-3 mt-5 h-9">
-                        <Checkbox checked={coldOk || coldItems.length === 0} disabled={coldItems.length === 0} onCheckedChange={(v) => setColdOk(!!v)} />
-                        <Snowflake className="w-4 h-4 text-sky-500" {...ICON} />{coldItems.length ? `${coldItems.length} cold item(s) in insulated bag` : 'No cold items'}
-                      </label>
-                      <label className="flex items-center gap-2 text-sm rounded-lg border border-gray-200 px-3 mt-5 h-9">
+                      {o.coldChain ? (
+                        <label className={cn('flex items-center gap-2 text-sm rounded-lg border px-3 sm:mt-5 min-h-9 py-1.5', bagRequired ? 'border-sky-300 bg-sky-50 text-sky-900 font-medium' : 'border-gray-200')}>
+                          <Checkbox checked={coldOk} onCheckedChange={(v) => setColdOk(!!v)} />
+                          <Snowflake className="w-4 h-4 text-sky-500 shrink-0" {...ICON} />Packed in insulated bag with ice packs{bagRequired ? ' *' : ''}
+                        </label>
+                      ) : (
+                        <p className="flex items-center gap-2 text-sm text-gray-400 rounded-lg border border-gray-100 px-3 sm:mt-5 h-9">No fresh/frozen items</p>
+                      )}
+                      <label className="flex items-center gap-2 text-sm rounded-lg border border-gray-200 px-3 sm:mt-5 min-h-9 py-1.5">
                         <Checkbox checked={labeled} onCheckedChange={(v) => setLabeled(!!v)} />Order labeled &amp; in ready area
                       </label>
                     </div>
-                    {coldItems.length > 0 && <p className="text-xs text-sky-700 mb-3">Cold items: {coldItems.map((i) => i.substitute?.status === 'accepted' ? i.substitute.name : i.name).join(', ')}</p>}
-                    <Button onClick={markReady} disabled={!labeled || (coldItems.length > 0 && !coldOk)}><CheckCircle2 className="w-4 h-4" {...ICON} />Mark Ready</Button>
+                    {coldItems.length > 0 && <p className="text-xs text-sky-700 mb-3">❄️ Cold items: {coldItems.map((i) => i.substitute?.status === 'accepted' ? i.substitute.name : i.name).join(', ')}{bagRequired ? ' · insulated bag required by branch setting' : ''}</p>}
+                    {o.items.some((i) => i.soldByWeight && !i.actualWeightKg && i.pickStatus !== 'removed' && i.pickStatus !== 'out_of_stock') && (
+                      <p className="text-xs text-amber-700 mb-3">Some weighed items have no actual weight yet — the estimated weight will be charged.</p>
+                    )}
+                    <Button onClick={markReady} disabled={!labeled || (bagRequired && !coldOk)}><CheckCircle2 className="w-4 h-4" {...ICON} />Mark Ready</Button>
                   </div>
                 )
               )}
@@ -387,7 +422,7 @@ export default function OrderDetailPage() {
                     <p className="font-semibold text-gray-900">{rider ? `Rider: ${rider.name}` : 'Ready — assign a rider'}</p>
                     <p className="text-sm text-gray-500">{rider ? `${rider.vehicle} · ${rider.plate} · ${rider.phone}` : `Dispatch rule: ${String(getSetting(s, 'dispatchRule', o.branchId))}`}{o.bagCount ? ` · ${o.bagCount} bag(s)` : ''}</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={() => setRiderOpen(true)}><Bike className="w-4 h-4" {...ICON} />{rider ? 'Change rider' : 'Assign rider'}</Button>
                     {rider && <Button onClick={outForDelivery}><Truck className="w-4 h-4" {...ICON} />Mark out for delivery</Button>}
                   </div>
@@ -400,7 +435,7 @@ export default function OrderDetailPage() {
                     {holdUntil && <p className={cn('text-xs', holdExpired ? 'text-[#dc2626] font-medium' : 'text-gray-500')}>{holdExpired ? `Hold time expired — policy: ${String(getSetting(s, 'noShowPolicy', o.branchId))}` : `Held until ${fmtTime(holdUntil.toISOString())} (${holdHours}h)`}</p>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={cn('inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold', verified ? 'bg-green-600 text-white' : 'bg-[#1e40af] text-white')}>{verified ? <Check className="w-4 h-4" /> : 1}</span>
+                    <span className={cn('inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold', verified ? 'bg-green-600 text-white' : 'bg-[#c8151d] text-white')}>{verified ? <Check className="w-4 h-4" /> : 1}</span>
                     <KeyRound className="w-4 h-4 text-gray-400" {...ICON} />
                     <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} onKeyDown={(e) => e.key === 'Enter' && verifyPin()} placeholder="4-digit PIN" disabled={verified} className={cn(inputClass, 'w-32 tracking-widest font-mono')} />
                     <Button variant="outline" onClick={verifyPin} disabled={verified || pin.length !== 4}>Verify PIN</Button>
@@ -408,7 +443,7 @@ export default function OrderDetailPage() {
                     {verified && <span className="text-sm text-green-700 font-medium">Shopper verified</span>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={cn('inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold', o.paymentStatus !== 'pending' ? 'bg-green-600 text-white' : 'bg-[#1e40af] text-white')}>{o.paymentStatus !== 'pending' ? <Check className="w-4 h-4" /> : 2}</span>
+                    <span className={cn('inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold', o.paymentStatus !== 'pending' ? 'bg-green-600 text-white' : 'bg-[#c8151d] text-white')}>{o.paymentStatus !== 'pending' ? <Check className="w-4 h-4" /> : 2}</span>
                     {o.paymentStatus === 'pending' ? (
                       <>
                         <span className="text-sm text-gray-700">Collect <b>{peso(o.total)}</b></span>
@@ -420,7 +455,7 @@ export default function OrderDetailPage() {
                     ) : <span className="text-sm text-gray-700">Paid — {PAYMENT_LABEL[o.paymentMethod]}</span>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold bg-[#1e40af] text-white">3</span>
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold bg-[#c8151d] text-white">3</span>
                     <Button onClick={markCollected} disabled={!verified || o.paymentStatus === 'pending'}><CheckCircle2 className="w-4 h-4" {...ICON} />Mark collected</Button>
                     {holdExpired && <Button variant="destructive" onClick={() => setCancelOpen(true)}>Apply no-show policy</Button>}
                   </div>
@@ -430,7 +465,7 @@ export default function OrderDetailPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div><p className="font-semibold text-gray-900">On the way with {rider?.name ?? 'rider'}</p>
                     <p className="text-sm text-gray-500">Left {o.outForDeliveryAt ? timeAgo(o.outForDeliveryAt) : ''} · the Rider App confirms delivery with proof ({String(getSetting(s, 'podMethod', o.branchId))}).</p></div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="outline" className="text-[#dc2626] border-red-200 hover:bg-red-50" onClick={() => setFailOpen(true)}><AlertTriangle className="w-4 h-4" {...ICON} />Failed delivery</Button>
                     <Button onClick={markDelivered}><CheckCircle2 className="w-4 h-4" {...ICON} />Mark delivered</Button>
                   </div>
@@ -470,36 +505,45 @@ export default function OrderDetailPage() {
                   const p = productOf(it.productId);
                   const total = lineTotal(it);
                   const dim = it.pickStatus === 'removed' || it.pickStatus === 'out_of_stock';
+                  const cut = cutLabel(it.cut);
+                  const pw = pendingWeight?.idx === idx ? pendingWeight : null;
+                  const pwCheck = pw ? weightCheck(it, pw.kg) : null;
                   return (
-                    <div key={idx} className="px-5 py-3.5">
+                    <div key={idx} className="px-4 sm:px-5 py-3.5">
                       <div className="flex items-start gap-3">
-                        <div className={cn('w-12 h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-2xl shrink-0', dim && 'opacity-40')}>{it.image}</div>
+                        <div className={cn('relative overflow-hidden w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-xl sm:text-2xl shrink-0', dim && 'opacity-40')}><ProductImage image={it.image} fill /></div>
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className={cn('font-medium text-gray-900', dim && 'line-through text-gray-400')}>{it.name}</p>
                             <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', PICK_LABEL[it.pickStatus].cls)}>{PICK_LABEL[it.pickStatus].label}</span>
-                            {p?.tags.filter((t) => t === 'chilled' || t === 'frozen').map((t) => <Pill key={t} className="bg-sky-50 text-sky-700 text-[11px]"><Snowflake className="w-3 h-3" {...ICON} />{t}</Pill>)}
+                            {(it.storage === 'fresh' || it.storage === 'frozen') && <Pill className="bg-sky-50 text-sky-700 text-[11px]"><Snowflake className="w-3 h-3" {...ICON} />{it.storage}</Pill>}
                           </div>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {p ? `${p.size} · SKU ${p.sku} · Aisle ${p.aisle}` : ''}
-                            {it.soldByWeight ? ` · ${peso(it.unitPrice)}/kg · est. ${(it.estWeightKg ?? 1).toFixed(2)} kg${it.actualWeightKg ? ` · actual ${it.actualWeightKg.toFixed(3)} kg` : ''}` : ` · ${it.qty} × ${peso(it.unitPrice)}`}
-                          </p>
-                          <p className="text-xs mt-0.5"><span className="text-gray-400">Substitution:</span> <span className="text-gray-600">{SUB_PREF[it.subPref]}</span></p>
+                          {cut && (
+                            <p className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-rose-50 border border-rose-200 px-2 py-1 text-sm font-semibold text-rose-800">
+                              <Scissors className="w-4 h-4 shrink-0" {...ICON} />{cut}
+                            </p>
+                          )}
+                          {it.soldByWeight ? (
+                            <p className="text-xs mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                              <span className="text-gray-500">{peso(priceOf(it))}/kg</span>
+                              <span className="text-gray-700">Est. <b>{(it.estWeightKg ?? 1).toFixed(2)} kg</b></span>
+                              {it.actualWeightKg
+                                ? <span className="text-green-700">Actual <b>{it.actualWeightKg.toFixed(3)} kg</b></span>
+                                : <span className="text-amber-700">Actual: not weighed yet</span>}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-500 mt-1">{it.qty} × {peso(priceOf(it))}</p>
+                          )}
+                          <p className="text-[11px] text-gray-400 mt-0.5">{p ? `${p.size} · SKU ${p.sku} · Aisle ${p.aisle}` : ''}</p>
+                          <p className="text-xs mt-0.5"><span className="text-gray-400">If unavailable:</span> <span className="text-gray-600">{SUB_PREF[it.subPref]}</span></p>
                           {it.note && <p className="text-xs mt-1 inline-flex items-center gap-1 rounded bg-amber-50 text-amber-800 px-2 py-0.5"><StickyNote className="w-3 h-3" {...ICON} />{it.note}</p>}
                           {it.substitute && (
-                            <div className={cn('mt-2 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm', it.substitute.status === 'proposed' ? 'border-amber-200 bg-amber-50' : it.substitute.status === 'accepted' ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50')}>
+                            <div className={cn('mt-2 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm', it.substitute.status === 'accepted' ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50')}>
                               <Replace className="w-4 h-4 text-gray-500" {...ICON} />
-                              <span className="text-lg">{it.substitute.image}</span>
+                              <span className="text-lg"><ProductImage image={it.substitute.image} /></span>
                               <span className="font-medium">{it.substitute.name}</span>
                               <span className="text-gray-500">{peso(it.substitute.unitPrice)}</span>
                               <span className="text-xs font-medium capitalize text-gray-600">· {it.substitute.status}</span>
-                              {it.substitute.status === 'proposed' && canEdit && (
-                                <span className="ml-auto flex flex-wrap gap-1.5">
-                                  <Button size="sm" variant="outline" className="h-7" onClick={() => shopperReply(idx, true)}>Simulate: accept</Button>
-                                  <Button size="sm" variant="outline" className="h-7" onClick={() => shopperReply(idx, false)}>Simulate: reject</Button>
-                                  <Button size="sm" variant="ghost" className="h-7" onClick={() => shopperReply(idx, it.subPref === 'similar', true)}>No reply (timeout)</Button>
-                                </span>
-                              )}
                             </div>
                           )}
                         </div>
@@ -508,29 +552,47 @@ export default function OrderDetailPage() {
                           {!it.soldByWeight && <p className="text-xs text-gray-500">qty {it.qty}</p>}
                         </div>
                       </div>
-                      {itemsEditable && it.pickStatus !== 'removed' && (
-                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pl-[60px]">
-                          {picking && it.pickStatus !== 'picked' && it.pickStatus !== 'substituted' && (
+                      {pw && pwCheck && (
+                        <div className="mt-2.5 sm:ml-[60px] rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                          <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 shrink-0" {...ICON} />Weight is {Math.abs(pwCheck.devPct).toFixed(1)}% {pwCheck.devPct > 0 ? 'over' : 'under'} the estimate (tolerance {tolerancePct}%)</p>
+                          <p className="mt-1">
+                            Est. {pwCheck.est.toFixed(2)} kg → actual <b>{pw.kg.toFixed(3)} kg</b> · price difference{' '}
+                            <b className={pwCheck.diff > 0 ? 'text-[#dc2626]' : 'text-green-700'}>{pwCheck.diff > 0 ? '+' : '−'}{peso(Math.abs(pwCheck.diff))}</b>
+                            {' '}(line {peso(lineTotal(it))} → {peso(Math.round((priceOf(it) * pw.kg + (it.cut?.fee ?? 0)) * 100) / 100)})
+                          </p>
+                          <p className="text-xs mt-1">Call {o.customerName} at {o.customerMobile} and ask if the new price is OK before applying.</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Button size="sm" onClick={() => applyWeight(idx, pw.kg, true)}><PhoneCall className="w-3.5 h-3.5" {...ICON} />Shopper approved by phone</Button>
+                            <Button size="sm" variant="outline" onClick={() => setPendingWeight(null)}>Cancel — re-weigh</Button>
+                          </div>
+                        </div>
+                      )}
+                      {itemsEditable && (
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 sm:pl-[60px]">
+                          {it.pickStatus !== 'removed' && picking && it.pickStatus !== 'picked' && it.pickStatus !== 'substituted' && (
                             <Button size="sm" variant="outline" className="h-7 text-green-700 border-green-200 hover:bg-green-50" onClick={() => setPick(idx, 'picked')}><Check className="w-3.5 h-3.5" {...ICON} />Picked</Button>
                           )}
-                          {!it.soldByWeight && it.qty > 1 && it.pickStatus !== 'out_of_stock' && !it.substitute && (
+                          {!it.soldByWeight && it.qty > 1 && !dim && !it.substitute && (
                             <Button size="sm" variant="outline" className="h-7" onClick={() => setShortFor(idx)}>Short</Button>
                           )}
-                          {it.pickStatus !== 'out_of_stock' && !it.substitute && (
+                          {!dim && !it.substitute && (
                             <Button size="sm" variant="outline" className="h-7 text-[#dc2626] border-red-200 hover:bg-red-50" onClick={() => setPick(idx, 'out_of_stock')}>Out of stock</Button>
                           )}
-                          {(!it.substitute || it.substitute.status === 'rejected') && it.subPref !== 'refund' && (
-                            <Button size="sm" variant="outline" className="h-7" onClick={() => setSubFor(idx)}><Replace className="w-3.5 h-3.5" {...ICON} />Propose substitute</Button>
+                          {!dim && !it.substitute && (
+                            <Button size="sm" variant="outline" className="h-7 text-gray-600" onClick={() => setPick(idx, 'removed')}><X className="w-3.5 h-3.5" {...ICON} />Remove</Button>
                           )}
-                          {it.pickStatus !== 'pending' && !it.substitute && (
+                          {(dim || it.pickStatus === 'short') && (
+                            <Button size="sm" variant="outline" className="h-7" onClick={() => calledShopper(it.name)}><PhoneCall className="w-3.5 h-3.5" {...ICON} />Called shopper</Button>
+                          )}
+                          {it.pickStatus !== 'pending' && it.substitute?.status !== 'accepted' && (
                             <Button size="sm" variant="ghost" className="h-7 text-gray-500" onClick={() => setPick(idx, 'pending')}>Undo</Button>
                           )}
-                          {it.soldByWeight && picking && (
-                            <span className="flex items-center gap-1 ml-auto">
-                              <Ruler className="w-4 h-4 text-gray-400" {...ICON} />
-                              <input type="number" step="0.001" min={0} value={weights[idx] ?? ''} onChange={(e) => setWeights((w) => ({ ...w, [idx]: e.target.value }))}
-                                onKeyDown={(e) => e.key === 'Enter' && setWeight(idx)} placeholder="Actual kg" className={cn(inputClass, 'h-7 w-24 text-xs')} />
-                              <Button size="sm" className="h-7" onClick={() => setWeight(idx)}>Set weight</Button>
+                          {it.soldByWeight && picking && !dim && !pw && (
+                            <span className="flex items-center gap-1 w-full sm:w-auto sm:ml-auto">
+                              <Ruler className="w-4 h-4 text-gray-400 shrink-0" {...ICON} />
+                              <input type="number" step="0.001" min={0} inputMode="decimal" value={weights[idx] ?? ''} onChange={(e) => setWeights((w) => ({ ...w, [idx]: e.target.value }))}
+                                onKeyDown={(e) => e.key === 'Enter' && setWeight(idx)} placeholder="Actual kg" className={cn(inputClass, 'h-7 flex-1 sm:flex-none sm:w-24 min-w-0 text-xs')} />
+                              <Button size="sm" className="h-7" onClick={() => setWeight(idx)}>{it.actualWeightKg ? 'Re-weigh' : 'Set weight'}</Button>
                             </span>
                           )}
                         </div>
@@ -539,7 +601,7 @@ export default function OrderDetailPage() {
                   );
                 })}
               </div>
-              <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-between text-sm bg-gray-50/60 rounded-b-xl">
+              <div className="border-t border-gray-100 px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-2 text-sm bg-gray-50/60 rounded-b-xl">
                 <span className="text-gray-500">{o.items.filter((i) => i.pickStatus === 'picked' || i.pickStatus === 'substituted').length} picked · {o.items.filter((i) => i.pickStatus === 'out_of_stock' || i.pickStatus === 'removed').length} refunded / removed{o.bagCount ? ` · ${o.bagCount} bag(s)` : ''}</span>
                 <span className="font-semibold">Subtotal {peso(o.subtotal)}</span>
               </div>
@@ -550,7 +612,7 @@ export default function OrderDetailPage() {
               <ol className="relative border-l border-gray-200 ml-2 space-y-4">
                 {[...o.timeline].reverse().map((e, i) => (
                   <li key={i} className="ml-4">
-                    <span className={cn('absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full border-2 border-white', i === 0 ? 'bg-[#1e40af]' : e.status === 'refund' ? 'bg-orange-400' : e.status === 'cancelled' || e.status === 'failed_delivery' ? 'bg-red-500' : 'bg-gray-300')} />
+                    <span className={cn('absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full border-2 border-white', i === 0 ? 'bg-[#c8151d]' : e.status === 'refund' ? 'bg-orange-400' : e.status === 'cancelled' || e.status === 'failed_delivery' ? 'bg-red-500' : 'bg-gray-300')} />
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                       <p className="text-sm font-medium text-gray-900">{(STATUS_LABEL as Record<string, string>)[e.status] ?? EVENT_LABEL[e.status] ?? e.status}</p>
                       <p className="text-xs text-gray-400">{fmtDateTime(e.at)}</p>
@@ -566,7 +628,7 @@ export default function OrderDetailPage() {
           <div className="space-y-5">
             <Panel title="Customer">
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#1e40af]/10 text-[#1e40af] flex items-center justify-center shrink-0"><User className="w-5 h-5" {...ICON} /></div>
+                <div className="w-10 h-10 rounded-full bg-[#c8151d]/10 text-[#c8151d] flex items-center justify-center shrink-0"><User className="w-5 h-5" {...ICON} /></div>
                 <div className="min-w-0">
                   <p className="font-semibold text-gray-900">{o.customerName}</p>
                   <p className="text-sm text-gray-500 flex items-center gap-1"><Phone className="w-3.5 h-3.5" {...ICON} />{o.customerMobile}</p>
@@ -589,7 +651,7 @@ export default function OrderDetailPage() {
                 </div>
               )}
               {conversation ? (
-                <Link href={`/support?c=${conversation.id}`} className="mt-3 flex items-center justify-between rounded-lg border border-[#1e40af]/20 bg-blue-50 px-3 py-2 text-sm text-[#1e40af] hover:bg-blue-100">
+                <Link href={`/support?c=${conversation.id}`} className="mt-3 flex items-center justify-between rounded-lg border border-[#c8151d]/20 bg-red-50 px-3 py-2 text-sm text-[#c8151d] hover:bg-red-100">
                   <span className="flex items-center gap-2"><MessageSquare className="w-4 h-4" {...ICON} />Support chat · {conversation.category}</span>
                   {conversation.unreadStaff > 0 && <span className="rounded-full bg-[#dc2626] text-white text-[10px] font-bold px-1.5">{conversation.unreadStaff}</span>}
                 </Link>
@@ -603,7 +665,7 @@ export default function OrderDetailPage() {
                 {o.fulfillment === 'delivery' && <Row k="Delivery fee" v={peso(o.deliveryFee)} sub={o.feeRule} />}
                 {o.serviceFee > 0 && <Row k="Service fee (gateway)" v={peso(o.serviceFee)} />}
                 {o.discount > 0 && <Row k={`Discount${o.voucherCode ? ` (${o.voucherCode})` : ''}`} v={`−${peso(o.discount)}`} cls="text-green-700" />}
-                <div className="border-t border-gray-100 pt-2 mt-2"><Row k="Total" v={peso(o.total)} cls="text-[#1e40af] font-bold text-base" /></div>
+                <div className="border-t border-gray-100 pt-2 mt-2"><Row k="Total" v={peso(o.total)} cls="text-[#c8151d] font-bold text-base" /></div>
                 {o.refundedAmount > 0 && <Row k="Refunded" v={`−${peso(o.refundedAmount)}`} cls="text-orange-700" />}
               </dl>
               {canEdit && o.paymentStatus === 'pending' && ONLINE_METHODS.includes(o.paymentMethod) && (
@@ -621,7 +683,7 @@ export default function OrderDetailPage() {
                     <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center"><Bike className="w-5 h-5" {...ICON} /></div>
                     <div className="text-sm">
                       <p className="font-semibold text-gray-900">{rider.name}</p>
-                      <p className="text-xs text-gray-500 capitalize">{rider.type} · {rider.vehicle} · {rider.plate} · <Star className="w-3 h-3 inline -mt-0.5 text-amber-500" {...ICON} />{rider.rating}</p>
+                      <p className="text-xs text-gray-500 capitalize">{rider.vehicle} · {rider.plate} · <Star className="w-3 h-3 inline -mt-0.5 text-amber-500" {...ICON} />{rider.rating}</p>
                       <p className="text-xs text-gray-500">{rider.phone}</p>
                     </div>
                   </div>
@@ -640,7 +702,10 @@ export default function OrderDetailPage() {
                 ))}
               </div>
               <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note for the team…" rows={2} />
-              <Button size="sm" className="mt-2" onClick={addNote} disabled={!note.trim()}>Add note</Button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button size="sm" onClick={addNote} disabled={!note.trim()}>Add note</Button>
+                {canEdit && <Button size="sm" variant="outline" onClick={() => calledShopper()}><PhoneCall className="w-3.5 h-3.5" {...ICON} />Called shopper</Button>}
+              </div>
             </Panel>
           </div>
         </div>
@@ -655,13 +720,12 @@ export default function OrderDetailPage() {
       <RiderDialog open={riderOpen} onClose={() => setRiderOpen(false)} o={o} s={s} />
       <FailDialog open={failOpen} onClose={() => setFailOpen(false)} o={o} />
       <ShortDialog idx={shortFor} o={o} onClose={() => setShortFor(null)} />
-      <SubstituteDialog idx={subFor} o={o} s={s} onClose={() => setSubFor(null)} />
     </DashboardLayout>
   );
 }
 
 function NextStep({ children }: { children: React.ReactNode }) {
-  return <section className="bg-white rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-[#1e40af] p-5">{children}</section>;
+  return <section className="bg-white rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-[#c8151d] p-5">{children}</section>;
 }
 
 function Row({ k, v, sub, cls }: { k: string; v: string; sub?: string; cls?: string }) {
@@ -692,7 +756,7 @@ function CancelDialog({ open, onClose, o, reasons, noShow }: { open: boolean; on
   };
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+      <DialogContent className="w-[calc(100%-1.5rem)] p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Cancel order {o.number}</DialogTitle>
           <DialogDescription>The shopper is notified and reserved stock is released.{o.paymentStatus === 'paid' ? ' Paid orders are refunded to the original payment method.' : ''}</DialogDescription>
@@ -749,7 +813,7 @@ function RefundDialog({ open, onClose, o, refundable, threshold, canApprove }: {
   };
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+      <DialogContent className="w-[calc(100%-1.5rem)] p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Refund {o.number}</DialogTitle>
           <DialogDescription>Refundable balance {peso(refundable)} · paid by {PAYMENT_LABEL[o.paymentMethod]}</DialogDescription>
@@ -757,7 +821,7 @@ function RefundDialog({ open, onClose, o, refundable, threshold, canApprove }: {
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             {(['full', 'partial'] as const).map((m) => (
-              <button key={m} onClick={() => setMode(m)} className={cn('rounded-lg border px-3 py-2 text-sm font-medium', mode === m ? 'border-[#1e40af] bg-blue-50 text-[#1e40af]' : 'border-gray-200 text-gray-600')}>{m === 'full' ? `Full (${peso(refundable)})` : 'Partial'}</button>
+              <button key={m} onClick={() => setMode(m)} className={cn('rounded-lg border px-3 py-2 text-sm font-medium', mode === m ? 'border-[#c8151d] bg-red-50 text-[#c8151d]' : 'border-gray-200 text-gray-600')}>{m === 'full' ? `Full (${peso(refundable)})` : 'Partial'}</button>
             ))}
           </div>
           {mode === 'partial' && <input type="number" min={0} max={refundable} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₱)" className={cn(inputClass, 'w-full')} />}
@@ -791,8 +855,9 @@ function RiderDialog({ open, onClose, o, s }: { open: boolean; onClose: () => vo
   const branch = s.branches.find((b) => b.id === o.branchId)!;
   const maxActive = num(getSetting(s, 'maxActiveOrders', o.branchId)) || 2;
   const rule = String(getSetting(s, 'dispatchRule', o.branchId));
-  const typeRank = { own: 0, freelance: 1, courier: 2 } as const;
-  const rows = s.riders.filter((r) => r.branchIds.includes(o.branchId)).map((r) => ({
+  const maxMins = o.maxDeliveryMins ?? (num(getSetting(s, 'meatMaxDeliveryMins', o.branchId)) || 60);
+  // Phase 1: the shop's own riders only.
+  const rows = s.riders.filter((r) => r.type === 'own' && r.branchIds.includes(o.branchId)).map((r) => ({
     r,
     dist: distanceKm(r, branch),
     load: s.orders.filter((x) => x.riderId === r.id && ['ready', 'out_for_delivery'].includes(x.status) && x.id !== o.id).length,
@@ -802,7 +867,6 @@ function RiderDialog({ open, onClose, o, s }: { open: boolean; onClose: () => vo
     if (av !== bv) return av - bv;
     if (rule.startsWith('Lowest')) return a.load - b.load || a.dist - b.dist;
     if (rule.startsWith('Highest')) return b.r.rating - a.r.rating;
-    if (rule.startsWith('Own')) return typeRank[a.r.type] - typeRank[b.r.type] || a.dist - b.dist;
     return a.dist - b.dist;
   });
   const assign = (riderId: string, name: string) => {
@@ -813,11 +877,17 @@ function RiderDialog({ open, onClose, o, s }: { open: boolean; onClose: () => vo
   };
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl w-[calc(100%-1.5rem)] p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Assign rider · {o.number}</DialogTitle>
-          <DialogDescription>Riders serving {branch.name}. Sorted by dispatch rule: {rule}. Max {maxActive} active orders per rider.</DialogDescription>
+          <DialogDescription>Own riders serving {branch.name}. Sorted by dispatch rule: {rule}. Max {maxActive} active orders per rider.</DialogDescription>
         </DialogHeader>
+        {o.coldChain && (
+          <p className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+            <Snowflake className="w-4 h-4 mt-0.5 shrink-0" {...ICON} />
+            <span>❄️ Cold-chain order — deliver within <b>{maxMins} min</b> of pickup. The rider confirms the insulated bag at pickup.</span>
+          </p>
+        )}
         <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">
           {rows.length === 0 && <EmptyState title="No riders serve this branch" />}
           {rows.map(({ r, dist, load }, i) => {
@@ -826,8 +896,8 @@ function RiderDialog({ open, onClose, o, s }: { open: boolean; onClose: () => vo
               <div key={r.id} className={cn('flex items-center gap-3 px-3 py-2.5', !usable && 'opacity-60')}>
                 <div className="w-9 h-9 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0"><Bike className="w-4 h-4" {...ICON} /></div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">{r.name}{i === 0 && usable && <Pill className="bg-green-50 text-green-700 text-[10px]">Recommended</Pill>}{o.riderId === r.id && <Pill className="bg-blue-50 text-[#1e40af] text-[10px]">Current</Pill>}</p>
-                  <p className="text-xs text-gray-500 capitalize">{r.type} · {r.vehicle} · {r.plate}</p>
+                  <p className="text-sm font-semibold text-gray-900 flex flex-wrap items-center gap-x-2">{r.name}{i === 0 && usable && <Pill className="bg-green-50 text-green-700 text-[10px]">Recommended</Pill>}{o.riderId === r.id && <Pill className="bg-red-50 text-[#c8151d] text-[10px]">Current</Pill>}</p>
+                  <p className="text-xs text-gray-500 capitalize">{r.vehicle} · {r.plate}<span className="sm:hidden"> · {r.status} · {dist} km · {load}/{maxActive} active</span></p>
                 </div>
                 <div className="hidden sm:grid grid-cols-4 gap-3 text-xs text-center">
                   <div><p className={cn('font-semibold capitalize', r.status === 'online' ? 'text-green-700' : 'text-gray-500')}>{r.status}</p><p className="text-gray-400">status</p></div>
@@ -860,7 +930,7 @@ function FailDialog({ open, onClose, o }: { open: boolean; onClose: () => void; 
   };
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+      <DialogContent className="w-[calc(100%-1.5rem)] p-4 sm:p-6">
         <DialogHeader><DialogTitle>Record failed delivery</DialogTitle><DialogDescription>What happened? Next you can re-attempt, return to branch or cancel.</DialogDescription></DialogHeader>
         <select value={reason} onChange={(e) => setReason(e.target.value)} className={cn(selectClass, 'w-full')}>
           <option value="">Choose what happened…</option>
@@ -891,50 +961,10 @@ function ShortDialog({ idx, o, onClose }: { idx: number | null; o: Order; onClos
   };
   return (
     <Dialog open={idx !== null} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+      <DialogContent className="w-[calc(100%-1.5rem)] p-4 sm:p-6">
         <DialogHeader><DialogTitle>Short pick · {it?.name}</DialogTitle><DialogDescription>Ordered {it?.qty}. How many are available?</DialogDescription></DialogHeader>
         <input type="number" min={1} max={(it?.qty ?? 2) - 1} value={qty} onChange={(e) => setQty(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} className={cn(inputClass, 'w-full')} autoFocus />
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={submit}>Update quantity</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SubstituteDialog({ idx, o, s, onClose }: { idx: number | null; o: Order; s: AppState; onClose: () => void }) {
-  const it = idx !== null ? o.items[idx] : undefined;
-  const orig = it ? s.products.find((p) => p.id === it.productId) : undefined;
-  const candidates: Product[] = orig ? s.products.filter((p) => p.categoryId === orig.categoryId && p.id !== orig.id && p.status === 'active') : [];
-  const propose = (p: Product) => {
-    if (idx === null || !it) return;
-    const price = getPrice(s, p.id, o.branchId, o.channel);
-    editOrder(o.id, 'Substitute proposed', `${it.name} → ${p.name} (${peso(price)})`, (x, d) => {
-      x.items[idx].substitute = { productId: p.id, name: p.name, image: p.image, unitPrice: price, status: 'proposed' };
-      x.items[idx].pickStatus = 'substituted';
-      if (x.status !== 'awaiting_shopper' && ['confirmed', 'preparing'].includes(x.status)) applyStatus(d, x.id, 'awaiting_shopper', { note: `Substitute proposed for ${it.name}` });
-      addNotification(d, { audience: 'shopper', targetId: x.customerId, title: `${x.number}: substitute suggested`, body: `${it.name} is unavailable. Accept ${p.name} for ${peso(price)}?`, orderId: x.id });
-    }, { recalc: false });
-    toast.success('Substitute proposed', { description: 'Shopper notified — awaiting reply' });
-    onClose();
-  };
-  return (
-    <Dialog open={idx !== null} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Propose a substitute</DialogTitle><DialogDescription>For {it?.name} · same category · shopper preference: {it ? SUB_PREF[it.subPref] : ''}</DialogDescription></DialogHeader>
-        <div className="divide-y divide-gray-100 rounded-lg border border-gray-100 max-h-80 overflow-y-auto">
-          {candidates.length === 0 && <EmptyState title="No similar products in this category" />}
-          {candidates.map((p) => {
-            const price = getPrice(s, p.id, o.branchId, o.channel);
-            const avail = available(s, p.id, o.branchId);
-            return (
-              <div key={p.id} className="flex items-center gap-3 px-3 py-2.5">
-                <span className="text-2xl">{p.image}</span>
-                <div className="flex-1 min-w-0"><p className="text-sm font-medium text-gray-900 truncate">{p.name}</p><p className="text-xs text-gray-500">{p.brand} · {p.size} · {avail} available</p></div>
-                <div className="text-right text-sm"><p className="font-semibold">{peso(price)}{p.soldByWeight ? '/kg' : ''}</p>{it && <p className={cn('text-[11px]', price > it.unitPrice ? 'text-amber-700' : 'text-green-700')}>{price > it.unitPrice ? '+' : ''}{peso(price - it.unitPrice)}</p>}</div>
-                <Button size="sm" disabled={avail <= 0} onClick={() => propose(p)}>Propose</Button>
-              </div>
-            );
-          })}
-        </div>
       </DialogContent>
     </Dialog>
   );
@@ -946,23 +976,32 @@ function PrintView({ o, mode, s }: { o: Order; mode: Exclude<PrintMode, null>; s
   const aisle = (i: OrderItem) => s.products.find((p) => p.id === (i.substitute?.status === 'accepted' ? i.substitute.productId : i.productId))?.aisle ?? 99;
   const items = mode === 'pick' ? [...o.items].sort((a, b) => aisle(a) - aisle(b)) : o.items.filter((i) => i.pickStatus !== 'removed' && i.pickStatus !== 'out_of_stock');
   const title = mode === 'pick' ? 'PICK LIST' : mode === 'pack' ? 'PACKING SLIP' : 'ORDER RECEIPT';
-  const cold = (i: OrderItem) => s.products.find((p) => p.id === i.productId)?.tags.some((t) => t === 'chilled' || t === 'frozen');
+  const cold = (i: OrderItem) => i.storage === 'fresh' || i.storage === 'frozen';
+  const weightText = (i: OrderItem) => {
+    if (!i.soldByWeight) return String(i.qty);
+    const est = `Est. ${(i.estWeightKg ?? 1).toFixed(2)} kg`;
+    if (i.actualWeightKg) return `${est} · Actual ${i.actualWeightKg.toFixed(3)} kg`;
+    return mode === 'receipt' ? `${(i.estWeightKg ?? 1).toFixed(3)} kg` : `${est} · Actual ______ kg`;
+  };
   return (
     <div className="hidden print:block text-black text-[12px] font-sans">
       <div className="flex justify-between border-b-2 border-black pb-2 mb-3">
-        <div><p className="text-lg font-bold">FreshMart · {branch.name}</p><p>{branch.address} · {branch.phone}</p></div>
+        <div><p className="text-lg font-bold">Jovanne’s Meat Shop · {branch.name}</p><p>{branch.address} · {branch.phone}</p></div>
         <div className="text-right"><p className="text-lg font-bold">{title}</p><p>{o.number}</p><p>{new Date().toLocaleString('en-PH')}</p></div>
       </div>
       <div className="grid grid-cols-2 gap-4 mb-3">
         <div><p><b>Customer:</b> {o.customerName}</p><p><b>Mobile:</b> {o.customerMobile}</p>{o.fulfillment === 'delivery' && o.address && <p><b>Deliver to:</b> {o.address.line}{o.address.landmark ? ` (${o.address.landmark})` : ''}</p>}</div>
         <div className="text-right"><p><b>{o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</b> · {o.slot}</p><p><b>Channel:</b> {CHANNEL_LABEL[o.channel]}</p><p><b>Payment:</b> {PAYMENT_LABEL[o.paymentMethod]} ({o.paymentStatus.replace('_', ' ')})</p>{mode !== 'receipt' && o.bagCount ? <p><b>Bags:</b> {o.bagCount}</p> : null}</div>
       </div>
+      {mode !== 'receipt' && o.coldChain && (
+        <p className="mb-2 border-2 border-black px-2 py-1 font-bold">❄ COLD CHAIN — pack in insulated bag with ice packs{o.maxDeliveryMins ? ` · deliver within ${o.maxDeliveryMins} min of rider pickup` : ''}</p>
+      )}
       <table className="w-full border-collapse">
         <thead><tr className="border-b border-black text-left">
           {mode === 'pick' && <th className="py-1 w-8">✓</th>}
           {mode === 'pick' && <th className="py-1">Aisle</th>}
           <th className="py-1">Item</th><th className="py-1 text-right">Qty / Wt</th>
-          {mode === 'pick' && <th className="py-1">Note / Sub. pref</th>}
+          {mode === 'pick' && <th className="py-1">Note / If unavailable</th>}
           {mode === 'pack' && <th className="py-1">Cold</th>}
           {mode === 'receipt' && <th className="py-1 text-right">Price</th>}
           {mode === 'receipt' && <th className="py-1 text-right">Amount</th>}
@@ -970,12 +1009,18 @@ function PrintView({ o, mode, s }: { o: Order; mode: Exclude<PrintMode, null>; s
         <tbody>
           {items.map((i, k) => {
             const name = i.substitute?.status === 'accepted' ? `${i.substitute.name} (sub. for ${i.name})` : i.name;
-            const qty = i.soldByWeight ? `${(i.actualWeightKg ?? i.estWeightKg ?? 1).toFixed(3)} kg` : String(i.qty);
+            const qty = mode === 'receipt' && i.soldByWeight ? `${(i.actualWeightKg ?? i.estWeightKg ?? 1).toFixed(3)} kg` : weightText(i);
+            const cut = cutLabel(i.cut);
             return (
               <tr key={k} className="border-b border-gray-300 align-top">
                 {mode === 'pick' && <td className="py-1">☐</td>}
                 {mode === 'pick' && <td className="py-1">{aisle(i)}</td>}
-                <td className="py-1">{name}</td><td className="py-1 text-right">{qty}</td>
+                <td className="py-1">
+                  {name}
+                  {cut && mode !== 'receipt' && <p className="text-[14px] font-bold uppercase">✂ {cut}</p>}
+                  {cut && mode === 'receipt' && <p className="text-[11px]">{cut}</p>}
+                </td>
+                <td className="py-1 text-right whitespace-nowrap">{qty}</td>
                 {mode === 'pick' && <td className="py-1">{[i.note, SUB_PREF[i.subPref]].filter(Boolean).join(' · ')}</td>}
                 {mode === 'pack' && <td className="py-1">{cold(i) ? '❄ COLD' : ''}</td>}
                 {mode === 'receipt' && <td className="py-1 text-right">{peso(i.substitute?.status === 'accepted' ? i.substitute.unitPrice : i.unitPrice)}</td>}

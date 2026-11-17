@@ -12,6 +12,7 @@ import { Button } from '@/src/components/ui/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/src/components/ui/shadcn/dialog';
 import { inputClass, selectClass } from '@/src/components/common';
 import { cn } from '@/src/lib/utils';
+import { ProductImage } from '@/src/components/ProductImage';
 
 export type ConversationX = Conversation & { tags?: string[]; csat?: number; escalated?: boolean };
 
@@ -97,7 +98,7 @@ export function RefundDialog({ s, conv, order, open, onOpenChange }: { s: AppSta
             <div className="flex flex-wrap gap-1.5">
               {order.items.slice(0, 6).map((i) => (
                 <button key={i.productId} onClick={() => setAmount(String(Math.round(i.unitPrice * (i.soldByWeight ? (i.actualWeightKg ?? i.estWeightKg ?? 1) : i.qty) * 100) / 100))} className="text-xs rounded-full border border-gray-200 px-2.5 py-1 hover:bg-gray-50">
-                  {i.image} {i.name}
+                  <ProductImage image={i.image} /> {i.name}
                 </button>
               ))}
               {order.deliveryFee > 0 && <button onClick={() => setAmount(String(order.deliveryFee))} className="text-xs rounded-full border border-gray-200 px-2.5 py-1 hover:bg-gray-50">🚚 Delivery fee</button>}
@@ -108,8 +109,8 @@ export function RefundDialog({ s, conv, order, open, onOpenChange }: { s: AppSta
           </label>
           <div><span className={lbl}>Refund to</span>
             <div className="mt-1 grid grid-cols-2 gap-2">
-              <button onClick={() => setDest('credit')} className={cn('rounded-lg border px-3 py-2 text-sm text-left', dest === 'credit' ? 'border-[#1e40af] bg-blue-50 text-[#1e40af]' : 'border-gray-200')}>Store credit<span className="block text-xs text-gray-500">instant, usable at checkout</span></button>
-              <button disabled={!originalAllowed} onClick={() => setDest('original')} className={cn('rounded-lg border px-3 py-2 text-sm text-left disabled:opacity-40', dest === 'original' ? 'border-[#1e40af] bg-blue-50 text-[#1e40af]' : 'border-gray-200')}>Original payment<span className="block text-xs text-gray-500">{order ? PAYMENT_LABEL[order.paymentMethod] : '—'} · 3–7 days</span></button>
+              <button onClick={() => setDest('credit')} className={cn('rounded-lg border px-3 py-2 text-sm text-left', dest === 'credit' ? 'border-[#c8151d] bg-red-50 text-[#c8151d]' : 'border-gray-200')}>Store credit<span className="block text-xs text-gray-500">instant, usable at checkout</span></button>
+              <button disabled={!originalAllowed} onClick={() => setDest('original')} className={cn('rounded-lg border px-3 py-2 text-sm text-left disabled:opacity-40', dest === 'original' ? 'border-[#c8151d] bg-red-50 text-[#c8151d]' : 'border-gray-200')}>Original payment<span className="block text-xs text-gray-500">{order ? PAYMENT_LABEL[order.paymentMethod] : '—'} · 3–7 days</span></button>
             </div>
           </div>
           <label className="block"><span className={lbl}>Reason</span>
@@ -154,8 +155,8 @@ export function VoucherSendDialog({ s, conv, open, onOpenChange }: { s: AppState
         {live.length === 0 ? <p className="text-sm text-gray-500">No live vouchers. Create one in Promotions.</p> : (
           <div className="space-y-2">
             {live.map((x) => (
-              <button key={x.id} onClick={() => setCode(x.code)} className={cn('w-full rounded-lg border px-3 py-2 text-left', code === x.code ? 'border-[#1e40af] bg-blue-50' : 'border-gray-200 hover:bg-gray-50')}>
-                <span className="font-mono font-semibold text-[#1e40af]">{x.code}</span>
+              <button key={x.id} onClick={() => setCode(x.code)} className={cn('w-full rounded-lg border px-3 py-2 text-left', code === x.code ? 'border-[#c8151d] bg-red-50' : 'border-gray-200 hover:bg-gray-50')}>
+                <span className="font-mono font-semibold text-[#c8151d]">{x.code}</span>
                 <span className="block text-xs text-gray-500">{x.description} · min {pesoShort(x.minBasket)}</span>
               </button>
             ))}
@@ -201,8 +202,8 @@ export function RedeliverDialog({ conv, order, open, onOpenChange }: { conv: Con
           {order.items.map((i) => (
             <li key={i.productId}>
               <label className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-gray-50 text-sm">
-                <input type="checkbox" className="accent-[#1e40af]" checked={picked.includes(i.productId)} onChange={(e) => setPicked((p) => (e.target.checked ? [...p, i.productId] : p.filter((x) => x !== i.productId)))} />
-                <span>{i.image}</span><span className="flex-1">{i.name}</span><span className="text-gray-400">× {i.qty}</span>
+                <input type="checkbox" className="accent-[#c8151d]" checked={picked.includes(i.productId)} onChange={(e) => setPicked((p) => (e.target.checked ? [...p, i.productId] : p.filter((x) => x !== i.productId)))} />
+                <span><ProductImage image={i.image} /></span><span className="flex-1">{i.name}</span><span className="text-gray-400">× {i.qty}</span>
               </label>
             </li>
           ))}

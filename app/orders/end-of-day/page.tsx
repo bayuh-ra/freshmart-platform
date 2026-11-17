@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { Banknote, Bike, CheckCircle2, Clock, Download, Lock, LockOpen, ReceiptText, RotateCcw, ShieldCheck, Timer, XCircle } from 'lucide-react';
 import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
@@ -64,11 +64,14 @@ export default function EndOfDayPage() {
   const [reopenOpen, setReopenOpen] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
 
-  useEffect(() => {
+  // Load the saved day state when the branch/day changes (reset-on-key-change pattern, no effect needed).
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  if (loadedKey !== storageKey) {
     const e = loadEod(storageKey);
+    setLoadedKey(storageKey);
     setEod(e);
     setCounted(e.counterCounted !== undefined ? String(e.counterCounted) : '');
-  }, [storageKey]);
+  }
 
   const save = (next: EodState) => {
     setEod(next);
@@ -205,15 +208,15 @@ export default function EndOfDayPage() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-        <StatCard title="Sales (completed)" value={peso(sales)} sub={`${completed.length} orders · net of refunds`} icon={<ReceiptText className="w-5 h-5" {...ICON} />} />
-        <StatCard title="Cash collected" value={peso(cashCollected)} sub="COD + pay at pickup + cash" accent="border-l-green-500" icon={<Banknote className="w-5 h-5" {...ICON} />} />
-        <StatCard title="Refunds" value={peso(refunds)} sub={`${refundCount} order${refundCount !== 1 ? 's' : ''}`} accent="border-l-orange-400" icon={<RotateCcw className="w-5 h-5" {...ICON} />} />
+        <StatCard valueClass="text-lg sm:text-2xl xl:text-3xl text-[#c8151d] break-words" title="Sales (completed)" value={peso(sales)} sub={`${completed.length} orders · net of refunds`} icon={<ReceiptText className="w-5 h-5" {...ICON} />} />
+        <StatCard valueClass="text-lg sm:text-2xl xl:text-3xl text-[#c8151d] break-words" title="Cash collected" value={peso(cashCollected)} sub="COD + pay at pickup + cash" accent="border-l-green-500" icon={<Banknote className="w-5 h-5" {...ICON} />} />
+        <StatCard valueClass="text-lg sm:text-2xl xl:text-3xl text-[#c8151d] break-words" title="Refunds" value={peso(refunds)} sub={`${refundCount} order${refundCount !== 1 ? 's' : ''}`} accent="border-l-orange-400" icon={<RotateCcw className="w-5 h-5" {...ICON} />} />
         <StatCard title="Cancellations" value={cancelled.length} sub={today.length ? `${Math.round((cancelled.length / today.length) * 100)}% of orders` : '—'} accent="border-l-[#dc2626]" icon={<XCircle className="w-5 h-5" {...ICON} />} />
         <StatCard title="Avg. confirmation" value={avgConfirm !== undefined ? `${avgConfirm.toFixed(1)} min` : '—'} sub={`${manual.length} manual · ${today.length - manual.length} auto-confirmed`} accent="border-l-purple-500" icon={<Timer className="w-5 h-5" {...ICON} />} />
         <StatCard title="Avg. prep time" value={avgPrep !== undefined ? `${avgPrep.toFixed(0)} min` : '—'} sub="Confirmed → Ready" accent="border-l-cyan-500" icon={<Clock className="w-5 h-5" {...ICON} />} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2 mb-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 mb-5">
         <Panel title="Orders by status" bodyClass="p-0">
           <Table>
             <TableHeader><TableRow><TableHead className="pl-5">Status</TableHead><TableHead className="text-right">Orders</TableHead><TableHead className="text-right pr-5">Value</TableHead></TableRow></TableHeader>
@@ -234,15 +237,15 @@ export default function EndOfDayPage() {
               ))}
             </TableBody>
           </Table>
-          <div className="px-5 py-4 border-t border-gray-100 grid grid-cols-3 gap-3 text-sm">
+          <div className="px-5 py-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             {(['cod', 'pay_at_pickup', 'cash'] as const).map((m) => (
-              <div key={m}><p className="text-xs text-gray-500">{PAYMENT_LABEL[m]}</p><p className="font-semibold text-[#1e40af]">{peso(cashBy(m))}</p></div>
+              <div key={m}><p className="text-xs text-gray-500">{PAYMENT_LABEL[m]}</p><p className="font-semibold text-[#c8151d]">{peso(cashBy(m))}</p></div>
             ))}
           </div>
         </Panel>
       </div>
 
-      <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Bike className="w-4 h-4 text-[#1e40af]" {...ICON} />Rider cash accountability (COD)</h2>}
+      <Panel title={<h2 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Bike className="w-4 h-4 text-[#c8151d]" {...ICON} />Rider cash accountability (COD)</h2>}
         action={<span className="text-xs text-gray-500">Holding {peso(totalHeld)} · remitted today {peso(totalRemitted)}</span>} bodyClass="p-0" className="mb-5">
         <Table>
           <TableHeader>
@@ -278,7 +281,7 @@ export default function EndOfDayPage() {
         </Table>
       </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Panel title="Counter cash (pay at pickup + cash)">
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between"><dt className="text-gray-500">Expected in drawer</dt><dd className="font-semibold">{peso(counterExpected)}</dd></div>
@@ -304,7 +307,7 @@ export default function EndOfDayPage() {
           {cancelled.length === 0 ? <p className="text-sm text-gray-400 mb-3">No cancellations today.</p> : (
             <ul className="space-y-1.5 mb-4">
               {cancelled.map((o) => (
-                <li key={o.id} className="flex justify-between gap-3 text-sm"><span><span className="font-medium text-[#1e40af]">{o.number}</span> <span className="text-gray-500">— {o.rejectReason ?? 'No reason'}</span></span><span className="text-gray-700">{peso(o.total)}</span></li>
+                <li key={o.id} className="flex justify-between gap-3 text-sm"><span><span className="font-medium text-[#c8151d]">{o.number}</span> <span className="text-gray-500">— {o.rejectReason ?? 'No reason'}</span></span><span className="text-gray-700">{peso(o.total)}</span></li>
               ))}
             </ul>
           )}
@@ -318,7 +321,7 @@ export default function EndOfDayPage() {
       </div>
 
       <Dialog open={reopenOpen} onOpenChange={setReopenOpen}>
-        <DialogContent>
+        <DialogContent className="w-[calc(100%-1.5rem)] p-4 sm:p-6">
           <DialogHeader><DialogTitle>Reopen {dayKey()}</DialogTitle><DialogDescription>The reason is written to the audit log. The sign-off is cleared and must be repeated.</DialogDescription></DialogHeader>
           <Textarea value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} placeholder="Why is the day being reopened? (e.g. late COD remittance from rider)" rows={3} />
           <DialogFooter><Button variant="outline" onClick={() => setReopenOpen(false)}>Cancel</Button><Button disabled={reopenReason.trim().length < 4} onClick={reopen}>Reopen day</Button></DialogFooter>

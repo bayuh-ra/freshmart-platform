@@ -17,6 +17,7 @@ import {
 } from '@/src/lib/logic';
 import type { Address, Customer, PaymentMethod, Product, SubstitutionPref } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
+import { ProductImage } from '@/src/components/ProductImage';
 
 const ICON = { strokeWidth: 1.75 };
 type Channel = 'walk_in' | 'phone';
@@ -196,16 +197,16 @@ export default function NewOrderPage() {
 
   return (
     <DashboardLayout title="New Walk-in / Phone Order" eyebrow="Order Desk">
-      <Link href="/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#1e40af] mb-3"><ArrowLeft className="w-4 h-4" {...ICON} />Live orders</Link>
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] items-start">
+      <Link href="/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#c8151d] mb-3"><ArrowLeft className="w-4 h-4" {...ICON} />Live orders</Link>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px] items-start">
         <div className="space-y-5 min-w-0">
           {/* Channel */}
           <Panel title="1. Channel" action={<span className="text-xs text-gray-500 flex items-center gap-1"><Store className="w-3.5 h-3.5" {...ICON} />{branch.name}</span>}>
             <div className="grid grid-cols-2 gap-3">
               {([['walk_in', 'Walk-in', 'Customer is at the counter', Store], ['phone', 'Phone order', 'Customer called the branch', Phone]] as const).map(([v, label, sub, Icon]) => (
                 <button key={v} onClick={() => setChannel(v)} disabled={v === 'phone' ? !branch.services.phone : !branch.services.walkIn}
-                  className={cn('flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-colors disabled:opacity-40', channel === v ? 'border-[#1e40af] bg-blue-50' : 'border-gray-200 hover:border-gray-300')}>
-                  <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', channel === v ? 'bg-[#1e40af] text-white' : 'bg-gray-100 text-gray-500')}><Icon className="w-5 h-5" {...ICON} /></div>
+                  className={cn('flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-colors disabled:opacity-40', channel === v ? 'border-[#c8151d] bg-red-50' : 'border-gray-200 hover:border-gray-300')}>
+                  <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', channel === v ? 'bg-[#c8151d] text-white' : 'bg-gray-100 text-gray-500')}><Icon className="w-5 h-5" {...ICON} /></div>
                   <div><p className="font-semibold text-gray-900">{label}</p><p className="text-xs text-gray-500">{sub}</p></div>
                 </button>
               ))}
@@ -215,9 +216,9 @@ export default function NewOrderPage() {
           {/* Customer */}
           <Panel title="2. Customer" action={!quickOpen && <Button size="sm" variant="outline" onClick={() => setQuickOpen(true)}><UserPlus className="w-4 h-4" {...ICON} />Quick add</Button>}>
             {customer ? (
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1e40af]/20 bg-blue-50 px-4 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-[#c8151d]/20 bg-red-50 px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#1e40af] text-white flex items-center justify-center"><User className="w-5 h-5" {...ICON} /></div>
+                  <div className="w-10 h-10 rounded-full bg-[#c8151d] text-white flex items-center justify-center"><User className="w-5 h-5" {...ICON} /></div>
                   <div>
                     <p className="font-semibold text-gray-900">{customer.name} {customer.blocked && <Pill className="bg-red-100 text-red-700 ml-1">Blocked</Pill>}</p>
                     <p className="text-sm text-gray-500">{customer.mobile} · {customer.addresses.length} saved address{customer.addresses.length !== 1 ? 'es' : ''} · {s.orders.filter((o) => o.customerId === customer.id).length} orders</p>
@@ -226,7 +227,7 @@ export default function NewOrderPage() {
                 <Button size="sm" variant="ghost" onClick={() => { setCustomerId(''); setAddrIdx('new'); }}><X className="w-4 h-4" {...ICON} />Change</Button>
               </div>
             ) : quickOpen ? (
-              <div className="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2">
                 <input autoFocus value={qaName} onChange={(e) => setQaName(e.target.value)} placeholder="Full name" className={inputClass} />
                 <input value={qaMobile} onChange={(e) => setQaMobile(e.target.value)} placeholder="Mobile (0917 123 4567)" className={inputClass} onKeyDown={(e) => e.key === 'Enter' && quickAdd()} />
                 <Button onClick={quickAdd}>Add customer</Button>
@@ -259,7 +260,7 @@ export default function NewOrderPage() {
 
           {/* Items */}
           <Panel title="3. Items" action={<span className="text-xs text-gray-500">Prices from the {branch.name} price list · {channel === 'phone' ? 'Phone' : 'Walk-in'} channel</span>}>
-            <div className="grid sm:grid-cols-[1fr_220px] gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_220px] gap-2">
               <div className="relative">
                 <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" {...ICON} />
                 <input value={prodQ} onChange={(e) => setProdQ(e.target.value)} placeholder="Search product name, brand or SKU" className={cn(inputClass, 'pl-8 w-full')} />
@@ -276,10 +277,10 @@ export default function NewOrderPage() {
                   const avail = available(s, p.id, branchId);
                   return (
                     <button key={p.id} onClick={() => addProduct(p)} className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50">
-                      <span className="text-2xl">{p.image}</span>
+                      <span className="text-2xl"><ProductImage image={p.image} /></span>
                       <span className="flex-1 min-w-0"><span className="block font-medium text-gray-900 truncate">{p.name}</span><span className="block text-xs text-gray-500">{p.brand} · {p.size} · {p.barcode}</span></span>
                       <span className="text-right"><span className="block font-semibold text-gray-900">{peso(price(p.id))}{p.soldByWeight ? '/kg' : ''}</span><span className={cn('block text-xs', avail <= 0 ? 'text-[#dc2626]' : avail < 10 ? 'text-amber-700' : 'text-green-700')}>{avail} available</span></span>
-                      <Plus className="w-4 h-4 text-[#1e40af]" {...ICON} />
+                      <Plus className="w-4 h-4 text-[#c8151d]" {...ICON} />
                     </button>
                   );
                 })}
@@ -297,7 +298,7 @@ export default function NewOrderPage() {
                     return (
                       <div key={l.productId} className="px-3 py-3">
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl">{p.image}</span>
+                          <span className="text-2xl"><ProductImage image={p.image} /></span>
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-gray-900 truncate">{p.name}</p>
                             <p className="text-xs text-gray-500">{peso(l.override ?? listPrice)}{p.soldByWeight ? `/kg · est. ${((p.estWeightKg ?? 1) * l.qty).toFixed(2)} kg` : ''} · {avail} available{l.override !== undefined && <span className="text-amber-700"> · list {peso(listPrice)}</span>}</p>
@@ -339,7 +340,7 @@ export default function NewOrderPage() {
             <div className="grid grid-cols-2 gap-2 mb-3">
               {(['pickup', 'delivery'] as const).map((f) => (
                 <button key={f} disabled={f === 'delivery' ? !branch.services.delivery : !branch.services.pickup} onClick={() => setFulfillment(f)}
-                  className={cn('rounded-lg border px-3 py-2 text-sm font-medium capitalize disabled:opacity-40', fulfillment === f ? 'border-[#1e40af] bg-blue-50 text-[#1e40af]' : 'border-gray-200 text-gray-600')}>{f}</button>
+                  className={cn('rounded-lg border px-3 py-2 text-sm font-medium capitalize disabled:opacity-40', fulfillment === f ? 'border-[#c8151d] bg-red-50 text-[#c8151d]' : 'border-gray-200 text-gray-600')}>{f}</button>
               ))}
             </div>
             {fulfillment === 'delivery' && (
@@ -373,8 +374,8 @@ export default function NewOrderPage() {
           <Panel title="5. Payment">
             <div className="space-y-1.5">
               {payOptions.map((o) => (
-                <label key={o.v} className={cn('flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer', pay === o.v ? 'border-[#1e40af] bg-blue-50' : 'border-gray-200 hover:bg-gray-50')}>
-                  <input type="radio" name="pay" checked={pay === o.v} onChange={() => setPay(o.v)} className="accent-[#1e40af]" />
+                <label key={o.v} className={cn('flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer', pay === o.v ? 'border-[#c8151d] bg-red-50' : 'border-gray-200 hover:bg-gray-50')}>
+                  <input type="radio" name="pay" checked={pay === o.v} onChange={() => setPay(o.v)} className="accent-[#c8151d]" />
                   <span className="flex-1"><span className="block text-sm font-medium text-gray-900">{o.label}</span><span className="block text-[11px] text-gray-500">{o.sub}</span></span>
                 </label>
               ))}
@@ -394,7 +395,7 @@ export default function NewOrderPage() {
               {hasOverride && (
                 <input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Reason for discount / override (logged)" className={cn(inputClass, 'w-full border-amber-300')} />
               )}
-              <div className="flex justify-between border-t border-gray-100 pt-2 mt-2 text-base"><dt className="font-semibold">Total</dt><dd className="font-bold text-[#1e40af]">{peso(total)}</dd></div>
+              <div className="flex justify-between border-t border-gray-100 pt-2 mt-2 text-base"><dt className="font-semibold">Total</dt><dd className="font-bold text-[#c8151d]">{peso(total)}</dd></div>
             </dl>
             {subtotal > 0 && subtotal < minOrder && <p className="mt-2 text-xs text-amber-700">Below the {peso(minOrder)} online minimum — allowed for counter orders.</p>}
             {!canApprove && <p className="mt-2 text-[11px] text-gray-400">Discounts and price overrides need the orders.approve permission.</p>}

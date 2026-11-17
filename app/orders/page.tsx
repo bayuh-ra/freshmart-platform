@@ -13,13 +13,14 @@ import { AccessDenied, EmptyState, PaymentBadge, Pill, StatCard, StatusBadge, To
 import { Button } from '@/src/components/ui/shadcn/button';
 import { Checkbox } from '@/src/components/ui/shadcn/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/src/components/ui/shadcn/table';
-import { addAudit, currentUserName, mutate, useStore, useTick } from '@/src/lib/store';
+import { addAudit, currentUserName, mutate, useStore } from '@/src/lib/store';
+import { useNow } from '@/src/components/delivery/helpers';
 import {
   CHANNEL_LABEL, PAYMENT_LABEL, STATUS_LABEL, applyStatus, can, confirmOrder, fmtTime, getSetting, isToday, num, peso, pesoShort, timeAgo,
 } from '@/src/lib/logic';
 import type { Order, OrderChannel, OrderStatus } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
-import { CHANNEL_PILL, RejectDialog } from './_shared';
+import { CHANNEL_PILL, ColdChainBadge, RejectDialog } from './_shared';
 
 const ICON = { strokeWidth: 1.75 };
 
@@ -39,7 +40,7 @@ function itemCount(o: Order) {
 
 export default function OrdersBoardPage() {
   const s = useStore();
-  useTick(1000);
+  const now = useNow(1000);
   const router = useRouter();
   const [view, setView] = useState<'board' | 'list'>('board');
   const [selected, setSelected] = useState<string[]>([]);
@@ -95,11 +96,17 @@ export default function OrdersBoardPage() {
     setSelected([]);
     toast.success(`${list.length} orders confirmed`, { description: 'All moved to Preparing' });
   };
-  const markReady = (o: Order) => {
+  const bagRequired = getSetting(s, 'insulatedBagRequired', branchId) === true;
+  const markReady = (o: Order, insulated: boolean) => {
+    if (o.coldChain && bagRequired && !insulated) { toast.error('Pack check needed', { description: 'Tick "Packed in insulated bag with ice packs" first.' }); return; }
     mutate((d) => {
       const od = d.orders.find((x) => x.id === o.id);
       if (!od) return;
       od.items.forEach((i) => { if (i.pickStatus === 'pending') i.pickStatus = 'picked'; });
+      if (od.coldChain && insulated) {
+        od.insulatedPacked = true;
+        od.timeline.push({ status: 'edit', at: new Date().toISOString(), by: currentUserName(d), note: 'Pack check: packed in insulated bag with ice packs' });
+      }
       applyStatus(d, o.id, 'ready', { note: o.fulfillment === 'pickup' ? 'Ready for pickup — shopper notified' : 'Ready — awaiting rider' });
       addAudit(d, { module: 'Orders', action: 'Marked ready', detail: o.number, branchId: o.branchId });
     });
@@ -119,7 +126,7 @@ export default function OrdersBoardPage() {
     if (fPay !== 'all' && o.paymentStatus !== fPay) return false;
     if (fRider !== 'all' && (fRider === 'none' ? !!o.riderId : o.riderId !== fRider)) return false;
     if (fDate === 'today' && !isToday(o.placedAt)) return false;
-    if (fDate === '7d' && Date.now() - new Date(o.placedAt).getTime() > 7 * 86400000) return false;
+    if (fDate === '7d' && now - new Date(o.placedAt).getTime() > 7 * 86400000) return false;
     if (q.trim()) {
       const t = q.trim().toLowerCase();
       if (!o.number.toLowerCase().includes(t) && !o.customerName.toLowerCase().includes(t) && !o.customerMobile.replace(/\s/g, '').includes(t.replace(/\s/g, ''))) return false;
@@ -145,7 +152,7 @@ export default function OrdersBoardPage() {
 
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Store className="w-6 h-6 text-[#1e40af]" {...ICON} />{branch?.name ?? 'Branch'}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Store className="w-6 h-6 text-[#c8151d]" {...ICON} />{branch?.name ?? 'Branch'}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {branch?.hours} · Confirmation timeout {timeoutMins} min ({timeoutAction}) · {ordersToday} orders today
           </p>
@@ -158,8 +165,8 @@ export default function OrdersBoardPage() {
             </Button>
           )}
           <div className="inline-flex rounded-lg border border-gray-300 bg-white p-0.5">
-            <button onClick={() => setView('board')} className={cn('h-8 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5', view === 'board' ? 'bg-[#1e40af] text-white' : 'text-gray-600 hover:bg-gray-50')}><Columns3 className="w-4 h-4" {...ICON} />Board</button>
-            <button onClick={() => setView('list')} className={cn('h-8 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5', view === 'list' ? 'bg-[#1e40af] text-white' : 'text-gray-600 hover:bg-gray-50')}><List className="w-4 h-4" {...ICON} />List</button>
+            <button onClick={() => setView('board')} className={cn('h-8 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5', view === 'board' ? 'bg-[#c8151d] text-white' : 'text-gray-600 hover:bg-gray-50')}><Columns3 className="w-4 h-4" {...ICON} />Board</button>
+            <button onClick={() => setView('list')} className={cn('h-8 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5', view === 'list' ? 'bg-[#c8151d] text-white' : 'text-gray-600 hover:bg-gray-50')}><List className="w-4 h-4" {...ICON} />List</button>
           </div>
           {can(s, 'orders.create') && moduleOn(s, 'walkin') && (
             <Button onClick={() => router.push('/orders/new')}><Plus className="w-4 h-4" {...ICON} />New walk-in / phone order</Button>
@@ -176,21 +183,22 @@ export default function OrdersBoardPage() {
           sub={`${branchOrders.filter((o) => o.status === 'ready' && o.fulfillment === 'delivery' && !o.riderId).length} need a rider`} icon={<PackageCheck className="w-5 h-5" {...ICON} />} />
         <StatCard title="Out for delivery" value={count(['out_for_delivery'])} accent="border-l-indigo-500"
           sub={`${count(['failed_delivery'])} failed attempts`} icon={<Bike className="w-5 h-5" {...ICON} />} />
-        <StatCard title="Sales today" value={pesoShort(salesToday)} accent="border-l-green-500" sub="Net of refunds, excl. cancelled" icon={<CheckCircle2 className="w-5 h-5" {...ICON} />} />
+        <StatCard valueClass="text-lg sm:text-2xl xl:text-3xl text-[#c8151d] break-words" title="Sales today" value={pesoShort(salesToday)} accent="border-l-green-500" sub="Net of refunds, excl. cancelled" icon={<CheckCircle2 className="w-5 h-5" {...ICON} />} />
       </div>
 
       {view === 'board' ? (
         <>
           {selectedValid.length > 0 && (
-            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-[#1e40af]/20 bg-blue-50 px-4 py-2.5">
-              <p className="text-sm text-[#1e40af] font-medium">{selectedValid.length} order{selectedValid.length > 1 ? 's' : ''} selected</p>
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-[#c8151d]/20 bg-red-50 px-4 py-2.5">
+              <p className="text-sm text-[#c8151d] font-medium">{selectedValid.length} order{selectedValid.length > 1 ? 's' : ''} selected</p>
               <div className="flex gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setSelected([])}>Clear</Button>
                 {canEdit && <Button size="sm" onClick={bulkConfirm}><CheckCircle2 className="w-4 h-4" {...ICON} />Confirm selected</Button>}
               </div>
             </div>
           )}
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-5 items-start">
+          {/* Phones: columns scroll sideways (swipe). Tablets: 2 columns. Desktop: all 5. */}
+          <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1 md:mx-0 md:px-0 md:pb-0 md:grid md:gap-4 md:grid-cols-2 xl:grid-cols-5 md:overflow-visible items-start">
             {COLUMNS.map((col) => {
               const list = boardOrders
                 .filter((o) => col.statuses.includes(o.status))
@@ -200,7 +208,7 @@ export default function OrdersBoardPage() {
               const colAwaiting = col.key === 'awaiting' ? list.map((o) => o.id) : [];
               const allSel = colAwaiting.length > 0 && colAwaiting.every((id) => selected.includes(id));
               return (
-                <div key={col.key} className="rounded-xl bg-gray-100/70 border border-gray-100 p-2.5 min-h-[200px]">
+                <div key={col.key} className="rounded-xl bg-gray-100/70 border border-gray-100 p-2.5 min-h-[200px] w-[82%] max-w-[320px] shrink-0 snap-start md:w-auto md:max-w-none md:min-w-0">
                   <div className="flex items-center justify-between px-1.5 py-1 mb-2">
                     <div className="flex items-center gap-2">
                       <span className={cn('w-2 h-2 rounded-full', col.dot)} />
@@ -217,9 +225,10 @@ export default function OrdersBoardPage() {
                   <div className="space-y-2.5">
                     {list.length === 0 && <p className="text-xs text-gray-400 text-center py-8">No orders</p>}
                     {list.map((o) => (
-                      <OrderCard key={o.id} o={o} timeoutMins={timeoutMins} riderName={s.riders.find((r) => r.id === o.riderId)?.name}
+                      <OrderCard key={o.id} o={o} now={now} timeoutMins={timeoutMins} riderName={s.riders.find((r) => r.id === o.riderId)?.name}
                         selectable={col.key === 'awaiting' && canEdit} selected={selected.includes(o.id)} onToggle={() => toggle(o.id)}
-                        canEdit={canEdit} onConfirm={() => doConfirm(o)} onReject={() => setRejecting(o)} onReady={() => markReady(o)} />
+                        bagRequired={bagRequired && !!o.coldChain}
+                        canEdit={canEdit} onConfirm={() => doConfirm(o)} onReject={() => setRejecting(o)} onReady={(insulated) => markReady(o, insulated)} />
                     ))}
                   </div>
                 </div>
@@ -230,9 +239,9 @@ export default function OrdersBoardPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <Toolbar>
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" {...ICON} />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Order no., customer or mobile" className={cn(inputClass, 'pl-8 w-64')} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Order no., customer or mobile" className={cn(inputClass, 'pl-8 w-full sm:w-64')} />
             </div>
             <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className={selectClass}>
               <option value="all">All statuses</option>
@@ -285,7 +294,7 @@ export default function OrdersBoardPage() {
               <TableBody>
                 {listOrders.map((o) => (
                   <TableRow key={o.id} className="cursor-pointer hover:bg-gray-50" onClick={() => router.push(`/orders/${o.id}`)}>
-                    <TableCell className="font-semibold text-[#1e40af]">{o.number}</TableCell>
+                    <TableCell className="font-semibold text-[#c8151d] whitespace-nowrap">{o.number}{o.coldChain && <ColdChainBadge order={o} className="ml-1.5 align-middle text-[10px] px-1.5" />}</TableCell>
                     <TableCell><p className="font-medium text-gray-900">{o.customerName}</p><p className="text-xs text-gray-500">{o.customerMobile}</p></TableCell>
                     <TableCell><Pill className={CHANNEL_PILL[o.channel]}>{CHANNEL_LABEL[o.channel]}</Pill></TableCell>
                     <TableCell className="capitalize">{o.fulfillment}</TableCell>
@@ -320,12 +329,13 @@ function mmss(sec: number) {
   return `${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}`;
 }
 
-function OrderCard({ o, timeoutMins, riderName, selectable, selected, onToggle, canEdit, onConfirm, onReject, onReady }: {
-  o: Order; timeoutMins: number; riderName?: string; selectable: boolean; selected: boolean; onToggle: () => void;
-  canEdit: boolean; onConfirm: () => void; onReject: () => void; onReady: () => void;
+function OrderCard({ o, now, timeoutMins, riderName, selectable, selected, onToggle, bagRequired, canEdit, onConfirm, onReject, onReady }: {
+  o: Order; now: number; timeoutMins: number; riderName?: string; selectable: boolean; selected: boolean; onToggle: () => void;
+  bagRequired: boolean; canEdit: boolean; onConfirm: () => void; onReject: () => void; onReady: (insulated: boolean) => void;
 }) {
+  const [bagOk, setBagOk] = useState(false);
   const awaiting = isAwaiting(o);
-  const remainingSec = timeoutMins * 60 - (Date.now() - new Date(o.placedAt).getTime()) / 1000;
+  const remainingSec = timeoutMins * 60 - (now - new Date(o.placedAt).getTime()) / 1000;
   const overdue = awaiting && remainingSec <= 0;
   const warning = awaiting && !overdue && remainingSec < (timeoutMins * 60) / 2;
   const flash = overdue || (!o.acknowledged && awaiting && warning);
@@ -334,12 +344,12 @@ function OrderCard({ o, timeoutMins, riderName, selectable, selected, onToggle, 
   const proposed = o.items.filter((i) => i.substitute?.status === 'proposed').length;
 
   return (
-    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 p-3 hover:shadow-md transition-shadow', flash && 'new-order-flash', warning && !flash && 'border-amber-300', done && 'opacity-80', selected && 'ring-2 ring-[#1e40af]/40')}>
+    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 p-3 hover:shadow-md transition-shadow', flash && 'new-order-flash', warning && !flash && 'border-amber-300', done && 'opacity-80', selected && 'ring-2 ring-[#c8151d]/40')}>
       <div className="flex items-start gap-2">
         {selectable && <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-1" aria-label={`Select ${o.number}`} />}
         <Link href={`/orders/${o.id}`} className="flex-1 min-w-0 group">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-bold text-[#1e40af] group-hover:underline">{o.number}</span>
+            <span className="font-bold text-[#c8151d] group-hover:underline">{o.number}</span>
             <span className="text-[11px] text-gray-500 flex items-center gap-1 whitespace-nowrap"><Clock className="w-3 h-3" {...ICON} />{timeAgo(o.placedAt)}</span>
           </div>
           <p className="text-sm font-medium text-gray-900 truncate mt-0.5">{o.customerName}</p>
@@ -348,6 +358,7 @@ function OrderCard({ o, timeoutMins, riderName, selectable, selected, onToggle, 
             <Pill className={o.fulfillment === 'delivery' ? 'bg-indigo-50 text-indigo-700' : 'bg-teal-50 text-teal-700'}>{o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'}</Pill>
             {o.autoConfirmed && <Pill className="bg-green-50 text-green-700"><Zap className="w-3 h-3" {...ICON} />auto-confirmed</Pill>}
             {o.flagged && <Pill className="bg-red-50 text-red-700">flagged</Pill>}
+            <ColdChainBadge order={o} />
           </div>
           <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
             <span>{o.slot} · {itemCount(o)} item{itemCount(o) !== 1 ? 's' : ''}</span>
@@ -380,7 +391,15 @@ function OrderCard({ o, timeoutMins, riderName, selectable, selected, onToggle, 
         </div>
       )}
       {canEdit && (o.status === 'preparing' || o.status === 'confirmed') && (
-        <Button size="sm" variant="outline" className="mt-2 w-full" onClick={onReady}><PackageCheck className="w-3.5 h-3.5" {...ICON} />Mark ready</Button>
+        <>
+          {bagRequired && (
+            <label className="mt-2 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-medium text-sky-900 cursor-pointer">
+              <Checkbox checked={bagOk} onCheckedChange={(v) => setBagOk(v === true)} className="mt-px" />
+              Packed in insulated bag with ice packs
+            </label>
+          )}
+          <Button size="sm" variant="outline" className="mt-2 w-full" disabled={bagRequired && !bagOk} onClick={() => onReady(bagOk)}><PackageCheck className="w-3.5 h-3.5" {...ICON} />Mark ready</Button>
+        </>
       )}
       {o.status === 'ready' && (
         <Link href={`/orders/${o.id}`} className="mt-2 block">

@@ -82,7 +82,7 @@ export default function ModuleControlPage() {
                       onKeyDown={(e) => { if (e.key === 'Enter') apply(); }}
                       placeholder="Reason (optional, shown in the change log)" className={cn(inputClass, 'flex-1')} />
                     <div className="flex gap-2">
-                      <button onClick={apply} className="h-9 px-4 rounded-lg bg-[#0f172a] text-white text-sm font-medium hover:bg-[#1e293b]">
+                      <button onClick={apply} className="h-9 px-4 rounded-lg bg-[#2a2322] text-white text-sm font-medium hover:bg-[#3d3432]">
                         Switch {pending.next ? 'on' : 'off'}
                       </button>
                       <button onClick={() => setPending(null)} className="h-9 px-3 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-white">Cancel</button>

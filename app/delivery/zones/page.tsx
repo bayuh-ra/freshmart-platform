@@ -12,7 +12,7 @@ import { addAudit, mutate, uid, useStore } from '@/src/lib/store';
 import { calcDeliveryFee, can, getSetting, num, peso, pesoShort } from '@/src/lib/logic';
 import type { DeliveryZone } from '@/src/lib/types';
 
-const ZONE_COLORS = ['#1e40af', '#7c3aed', '#0891b2', '#16a34a', '#d97706'];
+const ZONE_COLORS = ['#c8151d', '#7c3aed', '#0891b2', '#16a34a', '#d97706'];
 const FEE_LABEL: Record<DeliveryZone['feeModel'], string> = { flat: 'Flat fee', distance: 'Base + per km', tiers: 'Order-value tiers' };
 
 function feeSummary(z: DeliveryZone) {
@@ -24,7 +24,7 @@ function feeSummary(z: DeliveryZone) {
 function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button type="button" disabled={disabled} onClick={() => onChange(!on)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-[#1e40af]' : 'bg-gray-300'}`}>
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-[#c8151d]' : 'bg-gray-300'}`}>
       <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-0.5'}`} />
     </button>
   );
@@ -123,7 +123,7 @@ export default function ZonesPage() {
     <DashboardLayout title="Zones & Fees" eyebrow="Delivery">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <Store className="w-4 h-4 text-gray-400" strokeWidth={1.75} />
-        <select className={selectClass} value={branch.id} onChange={(e) => { setBranchId(e.target.value); setMsgDraft(undefined); setCustKey(''); }}>
+        <select className={`${selectClass} max-w-full`} value={branch.id} onChange={(e) => { setBranchId(e.target.value); setMsgDraft(undefined); setCustKey(''); }}>
           {s.branches.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
         </select>
         {!branch.services.delivery && <Pill className="bg-gray-200 text-gray-700">Delivery service is off for this branch (pickup only)</Pill>}
@@ -131,7 +131,7 @@ export default function ZonesPage() {
         <span className="text-xs text-gray-500 ml-auto">{zones.filter((z) => z.active).length} active zones · {branch.address}</span>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-6">
         <div className="space-y-6">
           <Panel title="Delivery zones" action={canEdit && <Button size="sm" onClick={() => setEdit({ id: '', branchId: branch.id, name: `${branch.name} ${zones.length ? 'outer' : '0–3 km'}`, type: 'radius', radiusKm: zones.length ? Math.max(...zones.map((z) => z.radiusKm)) + 3 : 3, feeModel: 'flat', flatFee: 49, baseFee: 49, perKm: 10, freeAbove: 1500, minOrder: 300, etaMins: 45, active: true })}><Plus className="w-4 h-4" /> Add zone</Button>} bodyClass="p-0">
             {zones.length === 0 ? (
@@ -139,7 +139,7 @@ export default function ZonesPage() {
             ) : (
               <ul className="divide-y divide-gray-100">
                 {zones.map((z, i) => (
-                  <li key={z.id} className={`px-5 py-4 flex items-center gap-4 ${z.active ? '' : 'opacity-60'}`}>
+                  <li key={z.id} className={`px-4 sm:px-5 py-4 flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 ${z.active ? '' : 'opacity-60'}`}>
                     <span className="w-3 h-3 rounded-full shrink-0" style={{ background: ZONE_COLORS[i % ZONE_COLORS.length] }} />
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-900">{z.name} <Pill className="ml-1">{z.type === 'radius' ? `Radius ${z.radiusKm} km` : `Areas · ${z.radiusKm} km`}</Pill></p>
@@ -158,7 +158,7 @@ export default function ZonesPage() {
           </Panel>
 
           <Panel title="Zone map" bodyClass="p-3">
-            <MapView key={branch.id} center={[branch.lat, branch.lng]} zoom={12} markers={markers} circles={circles} className="h-96" />
+            <MapView key={branch.id} center={[branch.lat, branch.lng]} zoom={12} markers={markers} circles={circles} className="h-72 sm:h-96" />
           </Panel>
         </div>
 
@@ -180,23 +180,23 @@ export default function ZonesPage() {
                     <span className="text-gray-700">{sl.label.replace('Today ', '')}</span>
                     <span className={sl.used >= slotCap ? 'text-[#dc2626] font-semibold' : 'text-gray-500'}>{sl.used >= slotCap ? 'Full' : `${sl.used}/${slotCap}`}</span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden"><div className={`h-full ${sl.used >= slotCap ? 'bg-[#dc2626]' : 'bg-[#1e40af]'}`} style={{ width: `${(sl.used / Math.max(1, slotCap)) * 100}%` }} /></div>
+                  <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden"><div className={`h-full ${sl.used >= slotCap ? 'bg-[#dc2626]' : 'bg-[#c8151d]'}`} style={{ width: `${(sl.used / Math.max(1, slotCap)) * 100}%` }} /></div>
                 </div>
               ))}
               <p className="text-[11px] text-gray-400">Capacity comes from the “Orders per delivery slot” setting (branch override wins).</p>
             </div>
           </Panel>
 
-          <Panel title={<div className="flex items-center gap-2"><Calculator className="w-4 h-4 text-[#1e40af]" strokeWidth={1.75} /><h2 className="text-base font-semibold text-gray-900">Fee calculator</h2></div>}>
+          <Panel title={<div className="flex items-center gap-2"><Calculator className="w-4 h-4 text-[#c8151d]" strokeWidth={1.75} /><h2 className="text-base font-semibold text-gray-900">Fee calculator</h2></div>}>
             <div className="flex rounded-lg bg-gray-100 p-0.5 mb-3 text-xs">
               {(['distance', 'customer'] as const).map((m) => (
-                <button key={m} onClick={() => setCalcMode(m)} className={`flex-1 rounded-md py-1.5 font-medium ${calcMode === m ? 'bg-white shadow-sm text-[#1e40af]' : 'text-gray-600'}`}>{m === 'distance' ? 'By distance' : 'Customer address'}</button>
+                <button key={m} onClick={() => setCalcMode(m)} className={`flex-1 rounded-md py-1.5 font-medium ${calcMode === m ? 'bg-white shadow-sm text-[#c8151d]' : 'text-gray-600'}`}>{m === 'distance' ? 'By distance' : 'Customer address'}</button>
               ))}
             </div>
             <div className="space-y-3">
               {calcMode === 'distance' ? (
                 <Field label={`Distance from ${branch.name}: ${km} km`}>
-                  <input type="range" min={0.5} max={12} step={0.5} value={km} onChange={(e) => setKm(Number(e.target.value))} className="w-full accent-[#1e40af]" />
+                  <input type="range" min={0.5} max={12} step={0.5} value={km} onChange={(e) => setKm(Number(e.target.value))} className="w-full accent-[#c8151d]" />
                 </Field>
               ) : (
                 <Field label="Customer address">
@@ -209,7 +209,7 @@ export default function ZonesPage() {
               <Field label="Basket subtotal (₱)">
                 <input type="number" className={`${inputClass} w-full`} value={subtotal} min={0} onChange={(e) => setSubtotal(Number(e.target.value) || 0)} />
               </Field>
-              <div className={`rounded-lg p-3 ${fee.outside ? 'bg-gray-50 border border-gray-200' : 'bg-blue-50/60 border border-blue-100'}`}>
+              <div className={`rounded-lg p-3 ${fee.outside ? 'bg-gray-50 border border-gray-200' : 'bg-red-50/60 border border-red-100'}`}>
                 {fee.outside ? (
                   <>
                     <p className="text-sm font-semibold text-gray-800">Outside delivery zones ({fee.distance} km)</p>
@@ -219,7 +219,7 @@ export default function ZonesPage() {
                   <>
                     <div className="flex items-baseline justify-between">
                       <span className="text-xs text-gray-500">Delivery fee</span>
-                      <span className="text-2xl font-bold text-[#1e40af]">{peso(fee.fee)}</span>
+                      <span className="text-2xl font-bold text-[#c8151d]">{peso(fee.fee)}</span>
                     </div>
                     <p className="text-xs text-gray-600 mt-1">Rule: {fee.rule}</p>
                     <p className="text-xs text-gray-500 mt-0.5">Distance {fee.distance} km · ETA {fee.zone?.etaMins} min</p>
@@ -268,13 +268,13 @@ function ZoneDialog({ zone, onClose }: { zone?: DeliveryZone; onClose: () => voi
         addAudit(d, { module: 'Settings', action: 'Delivery zone updated', branchId: f.branchId, detail: `${b?.name}: ${next.name}`, oldValue: `${old.radiusKm} km · ${feeSummary(old)} · min ${old.minOrder}`, newValue: `${next.radiusKm} km · ${feeSummary(next)} · min ${next.minOrder}` });
       }
     });
-    toast.success(f.id ? 'Zone updated' : 'Zone added', { description: 'New fees apply to the next checkout in the Shopper App and Order Desk.' });
+    toast.success(f.id ? 'Zone updated' : 'Zone added', { description: 'New fees apply to the next checkout in the Customer App and Order Desk.' });
     onClose();
   };
 
   return (
     <Dialog open={!!zone} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg w-[calc(100%-1.5rem)] p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{f.id ? 'Edit zone' : 'Add zone'}</DialogTitle>
           <DialogDescription>Fees are calculated at checkout and the rule applied is stored with the order.</DialogDescription>
@@ -303,7 +303,7 @@ function ZoneDialog({ zone, onClose }: { zone?: DeliveryZone; onClose: () => voi
           <Field label="Free delivery above (₱)" hint="0 = never free"><input type="number" className={`${inputClass} w-full`} value={f.freeAbove ?? 0} onChange={(e) => set('freeAbove', n(e.target.value))} /></Field>
           <Field label="Minimum order (₱)"><input type="number" className={`${inputClass} w-full`} value={f.minOrder} onChange={(e) => set('minOrder', n(e.target.value))} /></Field>
           <Field label="Estimated time (min)"><input type="number" className={`${inputClass} w-full`} value={f.etaMins} onChange={(e) => set('etaMins', n(e.target.value))} /></Field>
-          <label className="flex items-center gap-2 text-sm mt-5"><input type="checkbox" checked={f.active} onChange={(e) => set('active', e.target.checked)} className="accent-[#1e40af] w-4 h-4" /> Active</label>
+          <label className="flex items-center gap-2 text-sm mt-5"><input type="checkbox" checked={f.active} onChange={(e) => set('active', e.target.checked)} className="accent-[#c8151d] w-4 h-4" /> Active</label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>

@@ -24,7 +24,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
       className="inline-flex items-center gap-2 text-sm text-gray-700 disabled:opacity-50"
       aria-pressed={checked}
     >
-      <span className={cn('relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors', checked ? 'bg-[#1e40af]' : 'bg-gray-300')}>
+      <span className={cn('relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors', checked ? 'bg-[#c8151d]' : 'bg-gray-300')}>
         <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', checked ? 'translate-x-4' : 'translate-x-0.5')} />
       </span>
       {label}
@@ -82,7 +82,7 @@ export const MOVEMENT_LABEL: Record<MovementType, string> = {
   expiry: 'Expiry write-off', adjustment: 'Adjustment', count_correction: 'Count correction', transfer_in: 'Transfer in', transfer_out: 'Transfer out',
 };
 const MOVEMENT_CLASS: Record<MovementType, string> = {
-  receiving: 'bg-green-100 text-green-800', online_sale: 'bg-blue-100 text-blue-800', walkin_sale: 'bg-indigo-100 text-indigo-800',
+  receiving: 'bg-green-100 text-green-800', online_sale: 'bg-red-100 text-red-800', walkin_sale: 'bg-indigo-100 text-indigo-800',
   return: 'bg-teal-100 text-teal-800', wastage: 'bg-red-100 text-red-700', expiry: 'bg-orange-100 text-orange-800',
   adjustment: 'bg-amber-100 text-amber-800', count_correction: 'bg-purple-100 text-purple-800', transfer_in: 'bg-cyan-100 text-cyan-800', transfer_out: 'bg-gray-200 text-gray-700',
 };
@@ -92,8 +92,8 @@ export function MovementBadge({ type }: { type: MovementType }) {
 
 const GENERIC_CLASS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700', active: 'bg-green-100 text-green-800', hidden: 'bg-amber-100 text-amber-800', discontinued: 'bg-gray-200 text-gray-500',
-  sent: 'bg-blue-100 text-blue-800', partial: 'bg-amber-100 text-amber-800', received: 'bg-green-100 text-green-800', cancelled: 'bg-gray-200 text-gray-500',
-  requested: 'bg-gray-100 text-gray-700', approved: 'bg-blue-100 text-blue-800', dispatched: 'bg-indigo-100 text-indigo-800',
+  sent: 'bg-red-100 text-red-800', partial: 'bg-amber-100 text-amber-800', received: 'bg-green-100 text-green-800', cancelled: 'bg-gray-200 text-gray-500',
+  requested: 'bg-gray-100 text-gray-700', approved: 'bg-red-100 text-red-800', dispatched: 'bg-indigo-100 text-indigo-800',
   ok: 'bg-green-100 text-green-800', low: 'bg-amber-100 text-amber-800', out: 'bg-red-100 text-red-700', scheduled: 'bg-purple-100 text-purple-800', inactive: 'bg-gray-200 text-gray-500',
 };
 export function StateBadge({ value, label }: { value: Product['status'] | PurchaseOrder['status'] | Transfer['status'] | 'ok' | 'low' | 'out' | 'scheduled' | 'inactive'; label?: string }) {

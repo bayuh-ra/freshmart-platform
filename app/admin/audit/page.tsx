@@ -12,7 +12,7 @@ import { branchName, can, exportCsv, fmtDateTime, timeAgo } from '@/src/lib/logi
 import { cn } from '@/src/lib/utils';
 
 const MODULE_CLASS: Record<string, string> = {
-  Orders: 'bg-blue-100 text-blue-800', Catalog: 'bg-indigo-100 text-indigo-800', Pricing: 'bg-violet-100 text-violet-800',
+  Orders: 'bg-red-100 text-red-800', Catalog: 'bg-indigo-100 text-indigo-800', Pricing: 'bg-violet-100 text-violet-800',
   Inventory: 'bg-teal-100 text-teal-800', Riders: 'bg-orange-100 text-orange-800', Customers: 'bg-pink-100 text-pink-800',
   Promotions: 'bg-fuchsia-100 text-fuchsia-800', Settings: 'bg-amber-100 text-amber-800', 'Users & Roles': 'bg-red-100 text-red-800',
   Branches: 'bg-emerald-100 text-emerald-800', Support: 'bg-sky-100 text-sky-800', Payments: 'bg-lime-100 text-lime-800',
@@ -61,17 +61,17 @@ export default function AuditPage() {
   return (
     <DashboardLayout title="Audit Log" eyebrow="Administration" hideBranch>
       <div className="space-y-4">
-        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 flex items-center gap-2">
-          <Lock className="w-4 h-4 text-gray-500" strokeWidth={1.75} />
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 flex items-start gap-2">
+          <Lock className="w-4 h-4 mt-0.5 shrink-0 text-gray-500" strokeWidth={1.75} />
           <span><b>Entries are immutable — they cannot be edited or deleted.</b> Every price, stock, refund, setting, role and branch change is recorded with who, when, and the old → new value.</span>
         </div>
 
         <Panel bodyClass="p-0">
           <div className="p-4 pb-0">
             <Toolbar>
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" strokeWidth={1.75} />
-                <input className={cn(inputClass, 'pl-8 w-60')} placeholder="Search action, detail, value" value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} />
+                <input className={cn(inputClass, 'pl-8 w-full sm:w-60')} placeholder="Search action, detail, value" value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} />
               </div>
               <select className={selectClass} value={user} onChange={(e) => setUser(e.target.value)}>
                 <option value="all">All users</option>
@@ -90,7 +90,7 @@ export default function AuditPage() {
               <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} title="To" />
               {filtered && <Button variant="ghost" size="sm" onClick={clear}><X className="w-3.5 h-3.5" strokeWidth={1.75} />Clear</Button>}
               <div className="flex-1" />
-              <span className="text-sm text-gray-500"><b className="text-[#1e40af]">{rows.length}</b> entries</span>
+              <span className="text-sm text-gray-500"><b className="text-[#c8151d]">{rows.length}</b> entries</span>
               <Button variant="outline" onClick={doExport}><Download className="w-4 h-4" strokeWidth={1.75} />Export CSV</Button>
             </Toolbar>
           </div>
