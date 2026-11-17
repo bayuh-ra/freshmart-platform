@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/src/components/ui/shadcn/tabs';
 import { Field, EntityStatus, Tip } from '@/src/components/admin/ui';
 import { addAudit, mutate, uid, useStore } from '@/src/lib/store';
+import { guardLimit } from '@/src/lib/platform';
 import { can, fmtDateTime, getSetting, peso, timeAgo } from '@/src/lib/logic';
 import { PERMISSION_ACTIONS, PERMISSION_MODULES } from '@/src/lib/seed';
 import type { AppState, Role, StaffUser } from '@/src/lib/types';
@@ -159,7 +160,11 @@ function UsersTab({ editable }: { editable: boolean }) {
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
-                          {u.status !== 'deactivated' ? (
+                          {u.status === 'suspended' ? (
+                            <DropdownMenuItem disabled>
+                              <UserX className="w-4 h-4" strokeWidth={1.75} />Suspended by Platform Owner
+                            </DropdownMenuItem>
+                          ) : u.status !== 'deactivated' ? (
                             <DropdownMenuItem disabled={isMe} className="text-[#dc2626]" onClick={() => { act(u, 'Deactivate user', `${u.name} deactivated`, (x) => { x.status = 'deactivated'; }, u.status, 'deactivated'); toast.success(`${u.name} deactivated`); }}>
                               <UserX className="w-4 h-4" strokeWidth={1.75} />Deactivate
                             </DropdownMenuItem>
@@ -215,6 +220,7 @@ function InviteDialog({ onClose }: { onClose: () => void }) {
     if (!f.name.trim() || !/^\S+@\S+\.\S+$/.test(f.email)) return toast.error('Enter a name and a valid email');
     if (s.staff.some((u) => u.email.toLowerCase() === f.email.toLowerCase())) return toast.error('That email already has an account');
     if (f.scopeType !== 'all' && f.ids.length === 0) return toast.error(`Pick at least one ${f.scopeType === 'cities' ? 'city' : 'branch'}`);
+    if (!guardLimit('staff')) return;
     const role = s.roles.find((r) => r.id === f.roleId);
     mutate((d) => {
       d.staff.push({ id: uid('u'), name: f.name.trim(), email: f.email.trim(), roleId: f.roleId, scope: { type: f.scopeType, ids: f.scopeType === 'all' ? [] : f.ids }, status: 'invited', lastActive: new Date().toISOString(), twoFactor: false });
@@ -414,10 +420,12 @@ function MatrixTab({ editable }: { editable: boolean }) {
   }, [role, draft]);
 
   if (!role) return null;
-  const has = (p: string) => (role.protected ? true : draft.has(p));
+  const blocked = new Set(s.platform.blockedPermissions ?? []);
+  const has = (p: string) => !blocked.has(p) && (role.protected ? true : draft.has(p));
   const setMany = (perms: string[], on: boolean) => {
     if (readOnly) return;
-    setDraft((d) => { const n = new Set(d); perms.forEach((p) => (on ? n.add(p) : n.delete(p))); return n; });
+    // Permissions blocked by the Platform Owner cannot be granted to any role.
+    setDraft((d) => { const n = new Set(d); perms.filter((p) => !blocked.has(p)).forEach((p) => (on ? n.add(p) : n.delete(p))); return n; });
   };
   const save = () => {
     const before = role.permissions.length;
@@ -436,6 +444,12 @@ function MatrixTab({ editable }: { editable: boolean }) {
 
   return (
     <div className="space-y-4">
+      {blocked.size > 0 && (
+        <Tip className="border-slate-300 bg-slate-50 text-slate-800">
+          <Lock className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.75} />
+          <span><b>{blocked.size} permission{blocked.size === 1 ? ' is' : 's are'} locked by the Platform Owner</b> (LAP IT Solutions). Locked boxes cannot be ticked for any role, including Super Admin.</span>
+        </Tip>
+      )}
       <Tip className="border-amber-200 bg-amber-50 text-amber-900">
         <Lightbulb className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.75} />
         <span><b>Tip:</b> Use &lsquo;View as&rsquo; in the top-right menu to see the sidebar and pages change for that role.</span>
@@ -446,8 +460,8 @@ function MatrixTab({ editable }: { editable: boolean }) {
             <select className={selectClass} value={role.id} onChange={(e) => setRoleId(e.target.value)}>
               {s.roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
-            <span className="text-sm text-gray-500"><b className="text-[#1e40af]">{role.protected ? role.permissions.length : draft.size}</b> of {PERMISSION_MODULES.length * PERMISSION_ACTIONS.length} permissions</span>
-            {role.protected && <Pill className="bg-amber-100 text-amber-800"><Lock className="w-3 h-3" strokeWidth={1.75} />Protected — always has every permission</Pill>}
+            <span className="text-sm text-gray-500"><b className="text-[#1e40af]">{(role.protected ? role.permissions : [...draft]).filter((p) => !blocked.has(p)).length}</b> of {PERMISSION_MODULES.length * PERMISSION_ACTIONS.length} permissions</span>
+            {role.protected && <Pill className="bg-amber-100 text-amber-800"><Lock className="w-3 h-3" strokeWidth={1.75} />Protected — has every permission the plan allows</Pill>}
           </div>
         }
         action={!readOnly && (
@@ -490,7 +504,9 @@ function MatrixTab({ editable }: { editable: boolean }) {
                   </TableCell>
                   {row.map((p) => (
                     <TableCell key={p} className="text-center">
-                      <Checkbox disabled={readOnly} checked={has(p)} onCheckedChange={(v) => setMany([p], v === true)} aria-label={p} title={p} />
+                      {blocked.has(p)
+                        ? <span title={`${p} — locked by Platform Owner`} className="inline-flex text-gray-300"><Lock className="w-3.5 h-3.5" strokeWidth={1.75} /></span>
+                        : <Checkbox disabled={readOnly} checked={has(p)} onCheckedChange={(v) => setMany([p], v === true)} aria-label={p} title={p} />}
                     </TableCell>
                   ))}
                 </TableRow>

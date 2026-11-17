@@ -405,6 +405,8 @@ export function currentRole(s: AppState) {
 }
 /** Effective access = permission AND scope. */
 export function can(s: AppState, permission: string, branchId?: string) {
+  // Platform Owner ceiling: a blocked permission is off for every client role, including Super Admin.
+  if (s.platform?.blockedPermissions?.includes(permission)) return false;
   const role = currentRole(s);
   if (!role.permissions.includes(permission)) return false;
   if (!branchId) return true;

@@ -11,6 +11,7 @@ import {
 import { Badge } from '@/src/components/ui/shadcn/badge';
 import { useStore } from '@/src/lib/store';
 import { can } from '@/src/lib/logic';
+import { moduleForPath, moduleOn } from '@/src/lib/platform';
 
 interface NavItem { label: string; href: string; icon: React.ReactNode; perm?: string; badge?: 'orders' | 'support' }
 interface NavModule { key: string; label: string; href?: string; icon?: React.ReactNode; items?: NavItem[] }
@@ -101,7 +102,7 @@ export function Sidebar() {
   const badgeFor = (b?: NavItem['badge']) => (b === 'orders' ? pendingOrders : b === 'support' ? unreadSupport : 0);
 
   const visible = navModules
-    .map((m) => ({ ...m, items: m.items?.filter((i) => !i.perm || can(s, i.perm)) }))
+    .map((m) => ({ ...m, items: m.items?.filter((i) => (!i.perm || can(s, i.perm)) && moduleOn(s, moduleForPath(i.href))) }))
     .filter((m) => !m.items || m.items.length > 0);
 
   const allHrefs = navModules.flatMap((m) => m.items?.map((i) => i.href) ?? []);

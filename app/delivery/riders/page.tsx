@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/src/components/ui/sh
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/src/components/ui/shadcn/dialog';
 import { Textarea } from '@/src/components/ui/shadcn/textarea';
 import { addAudit, addNotification, mutate, useStore } from '@/src/lib/store';
+import { guardLimit } from '@/src/lib/platform';
 import { branchName, can, exportCsv, fmtDate, peso, pesoShort } from '@/src/lib/logic';
 import type { AppState, Order, Rider } from '@/src/lib/types';
 import {
@@ -96,6 +97,7 @@ export default function RidersPage() {
   const payouts = payoutRows(s, period);
 
   const setRiderStatus = (r: Rider, next: Rider['status'], action: string, extra?: string) => {
+    if (action === 'Rider approved' && !guardLimit('riders')) return;
     mutate((d) => {
       const x = d.riders.find((y) => y.id === r.id);
       if (!x) return;

@@ -4,7 +4,7 @@ import type {
   OrderChannel, Fulfillment, AuditLog, PurchaseOrder, Transfer, Banner,
 } from './types';
 
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 6;
 
 // Deterministic pseudo-random so the seed looks the same on every reset.
 function rng(seed: number) {
@@ -530,5 +530,33 @@ export function createSeed(): AppState {
     ],
     session: { staffUserId: 'u-1', branchId: 'b-mtn', shopperId: 'cu-1', riderId: 'r-1' },
     counters: { order: 10200 + orders.length + 10, po: 5, transfer: 3 },
+    platform: {
+      signedIn: false,
+      ownerName: 'LAP IT Owner',
+      modules: {
+        walkin: { on: false, reason: 'Not part of the launch scope', changedAt: daysAgo(3) },
+        endofday: { on: true },
+        purchasing: { on: false, reason: 'Stock comes in through Direct Receiving', changedAt: daysAgo(3) },
+        pricing: { on: true },
+        inventory: { on: true },
+        delivery: { on: true },
+        customers: { on: true },
+        promotions: { on: true },
+        support: { on: true },
+        reports: { on: true },
+        branches: { on: true },
+        content: { on: true },
+        otp: { on: false, reason: 'No OTP at launch', changedAt: daysAgo(3) },
+      },
+      limits: { cities: 4, branches: 8, staff: 15, riders: 12, products: 100, smsPerMonth: 1000 },
+      smsUsed: 312,
+      forcedSignOut: [],
+      blockedPermissions: [],
+      log: [
+        { id: 'pl-1', at: daysAgo(3), user: 'LAP IT Owner', action: 'Module switched OFF', detail: 'Walk-in & Phone orders', oldValue: 'ON', newValue: 'OFF' },
+        { id: 'pl-2', at: daysAgo(3), user: 'LAP IT Owner', action: 'Module switched OFF', detail: 'Purchase Orders', oldValue: 'ON', newValue: 'OFF' },
+        { id: 'pl-3', at: daysAgo(3), user: 'LAP IT Owner', action: 'Module switched OFF', detail: 'Phone OTP verification', oldValue: 'ON', newValue: 'OFF' },
+      ],
+    },
   };
 }

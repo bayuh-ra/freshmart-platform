@@ -8,6 +8,7 @@ import {
   AlertTriangle, Bike, CheckCircle2, Clock, Columns3, List, PackageCheck, PauseCircle, Plus, Search, ShoppingBag, Store, X, Zap,
 } from 'lucide-react';
 import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
+import { moduleOn } from '@/src/lib/platform';
 import { AccessDenied, EmptyState, PaymentBadge, Pill, StatCard, StatusBadge, Toolbar, inputClass, selectClass } from '@/src/components/common';
 import { Button } from '@/src/components/ui/shadcn/button';
 import { Checkbox } from '@/src/components/ui/shadcn/checkbox';
@@ -160,7 +161,7 @@ export default function OrdersBoardPage() {
             <button onClick={() => setView('board')} className={cn('h-8 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5', view === 'board' ? 'bg-[#1e40af] text-white' : 'text-gray-600 hover:bg-gray-50')}><Columns3 className="w-4 h-4" {...ICON} />Board</button>
             <button onClick={() => setView('list')} className={cn('h-8 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5', view === 'list' ? 'bg-[#1e40af] text-white' : 'text-gray-600 hover:bg-gray-50')}><List className="w-4 h-4" {...ICON} />List</button>
           </div>
-          {can(s, 'orders.create') && (
+          {can(s, 'orders.create') && moduleOn(s, 'walkin') && (
             <Button onClick={() => router.push('/orders/new')}><Plus className="w-4 h-4" {...ICON} />New walk-in / phone order</Button>
           )}
         </div>

@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/src/components/ui/shadcn/table';
 import { Toggle, Field, EntityStatus, Tip } from '@/src/components/admin/ui';
 import { addAudit, mutate, uid, useStore } from '@/src/lib/store';
+import { guardLimit } from '@/src/lib/platform';
 import { can, cityName, isToday, onHand, peso, pesoShort } from '@/src/lib/logic';
 import type { AppState, Branch, City } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
@@ -303,6 +304,7 @@ function CityDialog({ city, onClose }: { city: City | null; onClose: () => void 
   const [f, setF] = useState<Omit<City, 'id'>>({ name: city?.name ?? '', region: city?.region ?? 'Luzon', status: city?.status ?? 'active' });
   const save = () => {
     if (!f.name.trim()) return toast.error('City name is required');
+    if (!city && !guardLimit('cities')) return;
     mutate((d) => {
       if (city) {
         const x = d.cities.find((c) => c.id === city.id)!;
@@ -362,6 +364,7 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
     if (!f.name.trim() || !f.code.trim()) return toast.error('Name and code are required');
     const code = f.code.trim().toUpperCase();
     if (s.branches.some((b) => b.code === code && b.id !== branch?.id)) return toast.error(`Code ${code} is already used`);
+    if (!branch && !guardLimit('branches')) return;
     const city = s.cities.find((c) => c.id === f.cityId);
     const lat = Number(f.lat) || (s.branches.find((b) => b.cityId === f.cityId)?.lat ?? 7.07);
     const lng = Number(f.lng) || (s.branches.find((b) => b.cityId === f.cityId)?.lng ?? 125.6);

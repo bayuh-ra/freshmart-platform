@@ -328,7 +328,7 @@ export interface StaffUser {
   email: string;
   roleId: ID;
   scope: { type: 'all' | 'cities' | 'branches'; ids: ID[] };
-  status: 'active' | 'invited' | 'deactivated';
+  status: 'active' | 'invited' | 'deactivated' | 'suspended';
   lastActive: string;
   twoFactor: boolean;
 }
@@ -399,6 +399,27 @@ export interface Session {
   riderId: ID; // signed-in rider in the Rider App demo
 }
 
+// ---------------- Platform Owner (LAP IT Solutions) ----------------
+export type ModuleKey =
+  | 'walkin' | 'endofday' | 'purchasing' | 'pricing' | 'inventory' | 'delivery' | 'customers'
+  | 'promotions' | 'support' | 'reports' | 'branches' | 'content' | 'otp';
+export type LimitKey = 'cities' | 'branches' | 'staff' | 'riders' | 'products' | 'smsPerMonth';
+export interface ModuleState { on: boolean; reason?: string; changedAt?: string }
+export interface PlatformLog { id: ID; at: string; user: string; action: string; detail: string; oldValue?: string; newValue?: string }
+export interface PlatformState {
+  /** Demo sign-in for the Platform Owner console (no real auth in the demo). */
+  signedIn: boolean;
+  ownerName: string;
+  modules: Record<ModuleKey, ModuleState>;
+  limits: Record<LimitKey, number>;
+  smsUsed: number;
+  /** Super Admin accounts signed out by the Platform Owner (must sign in again). */
+  forcedSignOut: ID[];
+  /** Permissions the Platform Owner removed from the client (a ceiling for every client role, including Super Admin). */
+  blockedPermissions: string[];
+  log: PlatformLog[];
+}
+
 export interface AppState {
   version: number;
   seededAt: string;
@@ -428,4 +449,5 @@ export interface AppState {
   cart: { productId: ID; qty: number; note?: string; subPref: SubstitutionPref }[];
   session: Session;
   counters: { order: number; po: number; transfer: number };
+  platform: PlatformState;
 }

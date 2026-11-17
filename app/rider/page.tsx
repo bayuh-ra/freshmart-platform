@@ -6,12 +6,23 @@ import { mutate, useStore } from '@/src/lib/store';
 import { branchName } from '@/src/lib/logic';
 import { PhoneFrame, selectClass } from '@/src/components/common';
 import { RiderApp } from '@/src/components/rider/RiderApp';
+import { ModuleOff } from '@/src/components/platform/Gates';
+import { moduleOn } from '@/src/lib/platform';
 import { RIDER_TYPE_LABEL } from '@/src/components/delivery/helpers';
 
 export default function RiderPage() {
   const s = useStore();
   const riders = s.riders.filter((r) => r.type === 'own' || r.type === 'freelance');
   const riderId = s.session.riderId;
+
+  if (!moduleOn(s, 'delivery')) {
+    return (
+      <div className="min-h-screen bg-[#eef0f6] flex flex-col items-center justify-center p-4 gap-4">
+        <ModuleOff moduleKey="delivery" />
+        <Link href="/login" className="text-sm text-gray-600 hover:text-[#1e40af]">Back to portals</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#eef0f6] flex flex-col">

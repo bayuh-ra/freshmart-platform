@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/src/components/ui/shadcn/tabs';
 import { Textarea } from '@/src/components/ui/shadcn/textarea';
 import { addAudit, mutate, uid, useStore } from '@/src/lib/store';
+import { guardLimit } from '@/src/lib/platform';
 import { branchName, can, exportCsv, getPriceInfo, peso, stockSummary } from '@/src/lib/logic';
 import type { AppState, Product, TaxType, UnitOfMeasure } from '@/src/lib/types';
 import {
@@ -247,6 +248,7 @@ function ProductDialog({ s, product, isNew, onClose }: { s: AppState; product: P
     if (!f.sku.trim()) return toast.error('SKU is required');
     if (s.products.some((p) => p.sku.toLowerCase() === f.sku.trim().toLowerCase() && p.id !== f.id)) return toast.error(`SKU ${f.sku} already exists`);
     if (!(f.basePrice > 0)) return toast.error('Base price must be greater than zero');
+    if (isNew && !guardLimit('products')) return;
     const offline = f.tags.filter((t) => t.startsWith('offline:'));
     const tags = [...tagText.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean), ...offline];
     const next: Product = { ...f, sku: f.sku.trim(), name: f.name.trim(), tags, estWeightKg: f.soldByWeight ? f.estWeightKg || 1 : undefined };
@@ -487,6 +489,7 @@ function BulkImport({ s, canEdit, onExport }: { s: AppState; canEdit: boolean; o
     if (!rows) return;
     const ok = rows.filter((r) => r.action !== 'error');
     if (!ok.length) return toast.error('No valid rows to apply');
+    if (!guardLimit('products', ok.filter((r) => r.action === 'create').length)) return;
     mutate((d) => {
       for (const r of ok) {
         const p = d.products.find((x) => x.sku.toLowerCase() === r.sku.toLowerCase());

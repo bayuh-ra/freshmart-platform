@@ -2,7 +2,8 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { LayoutDashboard, ClipboardList, Smartphone, Bike, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Smartphone, Bike, ArrowRight, ShieldCheck } from 'lucide-react';
+import { moduleOn } from '@/src/lib/platform';
 import { mutate, useStore } from '@/src/lib/store';
 
 // Same split-screen brand panel as the CRM login (mesh orbs + dot grid),
@@ -10,13 +11,13 @@ import { mutate, useStore } from '@/src/lib/store';
 // of the platform's four applications with a matching demo account.
 const PORTALS = [
   { href: '/dashboard', title: 'Admin Dashboard', who: 'Head office · Super Admin', icon: LayoutDashboard, user: 'u-1', desc: 'Cities, branches, catalog, pricing, inventory, riders, settings, roles, reports.' },
-  { href: '/orders', title: 'Order Desk (POS)', who: 'Matina branch · Cashier', icon: ClipboardList, user: 'u-4', desc: 'Live order board, confirm, pick, substitute, walk-in & phone orders, pickup handover.' },
+  { href: '/orders', title: 'Order Desk', who: 'Matina branch · Cashier', icon: ClipboardList, user: 'u-4', desc: 'Live order board, confirm, pick, substitute, walk-in & phone orders, pickup handover.' },
   { href: '/shopper', title: 'Shopper App', who: 'Maria Santos · iOS / Android', icon: Smartphone, desc: 'Browse, cart, checkout, pay, live tracking, ratings and support chat.' },
-  { href: '/rider', title: 'Rider App', who: 'Jomar Villar · Own rider', icon: Bike, desc: 'Job offers, pickup, navigation, proof of delivery, COD and earnings.' },
+  { href: '/rider', title: 'Rider App', who: 'Jomar Villar · Own rider', icon: Bike, desc: 'Job offers, pickup, navigation, proof of delivery, COD and earnings.', module: 'delivery' as const },
 ];
 
 export default function LoginPage() {
-  useStore();
+  const s = useStore();
   return (
     <div className="min-h-screen grid md:grid-cols-[1.05fr_1fr]">
       <div className="relative hidden md:flex flex-col justify-between h-full min-h-screen px-12 py-8 overflow-hidden text-white"
@@ -49,7 +50,7 @@ export default function LoginPage() {
           <h2 className="text-2xl font-bold text-[#0f0f1a]" style={{ fontFamily: 'var(--font-ibm-plex-sans)' }}>Welcome</h2>
           <p className="text-sm text-[#525569] mt-1 mb-6">Choose an application to open. Open two in separate tabs to see live updates between them.</p>
           <div className="space-y-3">
-            {PORTALS.map((p) => (
+            {PORTALS.filter((p) => !('module' in p) || moduleOn(s, p.module)).map((p) => (
               <Link key={p.href} href={p.href}
                 onClick={() => { if (p.user) mutate((d) => { d.session.staffUserId = p.user!; d.session.branchId = 'b-mtn'; }); }}
                 className="group flex items-center gap-4 bg-white rounded-2xl border border-[rgba(15,15,26,0.08)] shadow-sm p-4 hover:shadow-md hover:border-[#1e40af]/30 transition-all">
@@ -65,6 +66,16 @@ export default function LoginPage() {
               </Link>
             ))}
           </div>
+          <Link href="/platform"
+            className="mt-3 group flex items-center gap-4 rounded-2xl bg-[#0f172a] text-white shadow-sm p-4 hover:bg-[#1e293b] transition-colors">
+            <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0"><ShieldCheck className="w-6 h-6" strokeWidth={1.75} /></div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">Platform Owner</p>
+              <p className="text-xs text-slate-300 font-medium">LAP IT Solutions only</p>
+              <p className="text-xs text-slate-400 mt-0.5">Switch client modules on or off, set plan limits, manage Super Admin accounts.</p>
+            </div>
+            <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-white transition-colors" />
+          </Link>
           <p className="text-center text-xs text-gray-400 mt-6">Demo environment · sample data for 3 cities and 6 branches</p>
         </div>
       </div>

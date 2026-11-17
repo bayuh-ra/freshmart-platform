@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Bell, RotateCcw, Store, ChevronDown, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sidebar, SIDEBAR_COLLAPSED_WIDTH } from './Sidebar';
+import { ClientGate } from '@/src/components/platform/Gates';
 import { mutate, resetDemo, useStore } from '@/src/lib/store';
 import { currentRole, currentUser, timeAgo, userBranchIds, playAlert } from '@/src/lib/logic';
 import {
@@ -27,7 +28,7 @@ export function DashboardLayout({ title, eyebrow, children, hideBranch }: Props)
       <Navbar title={title} eyebrow={eyebrow} hideBranch={hideBranch} />
       <NewOrderWatcher />
       <main style={{ marginLeft: SIDEBAR_COLLAPSED_WIDTH }} className="pt-16 min-h-screen">
-        <div className="p-6 md:p-8">{children}</div>
+        <div className="p-6 md:p-8"><ClientGate>{children}</ClientGate></div>
       </main>
     </div>
   );
@@ -154,11 +155,11 @@ function Navbar({ title, eyebrow, hideBranch }: { title: string; eyebrow?: strin
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72">
             <DropdownMenuLabel>View as (RBAC demo)</DropdownMenuLabel>
-            {s.staff.filter((u) => u.status === 'active').map((u) => (
+            {s.staff.filter((u) => u.status === 'active' || u.status === 'suspended').map((u) => (
               <DropdownMenuItem key={u.id} onClick={() => { mutate((d) => { d.session.staffUserId = u.id; }); toast.success(`Now viewing as ${u.name}`, { description: s.roles.find((r) => r.id === u.roleId)?.name }); }}>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm">{u.name}</p>
-                  <p className="text-xs text-gray-500">{s.roles.find((r) => r.id === u.roleId)?.name}</p>
+                  <p className="text-xs text-gray-500">{s.roles.find((r) => r.id === u.roleId)?.name}{u.status === 'suspended' ? ' · suspended' : ''}</p>
                 </div>
                 {u.id === user.id && <span className="text-[#1e40af]">●</span>}
               </DropdownMenuItem>
