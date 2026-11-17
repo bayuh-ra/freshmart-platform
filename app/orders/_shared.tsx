@@ -7,8 +7,8 @@ import { Button } from '@/src/components/ui/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/src/components/ui/shadcn/dialog';
 import { inputClass } from '@/src/components/common';
 import { addAudit, currentUserName, mutate } from '@/src/lib/store';
-import { peso, pesoShort, rejectOrder } from '@/src/lib/logic';
-import type { Order, OrderChannel } from '@/src/lib/types';
+import { cutFeeText, peso, rejectOrder } from '@/src/lib/logic';
+import type { CutFeeType, Order, OrderChannel } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
 
 /** ❄️ badge for orders with fresh or frozen items (insulated bag + maximum delivery time apply). */
@@ -23,9 +23,10 @@ export function ColdChainBadge({ order, className }: { order: Pick<Order, 'coldC
 }
 
 /** Line description for the butcher: cut / preparation, weights. Used on screen and on printed slips. */
-export function cutLabel(cut?: { name: string; fee: number }) {
+export function cutLabel(cut?: { name: string; fee: number; feeType?: CutFeeType }) {
   if (!cut) return undefined;
-  return `Cut: ${cut.name} (+${pesoShort(cut.fee)})`;
+  const fee = cutFeeText(cut);
+  return `Cut: ${cut.name}${fee ? ` (${fee})` : ''}`;
 }
 
 export const CHANNEL_PILL: Record<OrderChannel, string> = {

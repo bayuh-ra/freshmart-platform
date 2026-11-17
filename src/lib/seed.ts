@@ -1,11 +1,11 @@
 import type {
-  AppState, Branch, Category, City, Customer, CutOption, DeliveryZone, Order, OrderItem, OrderStatus,
+  AppState, Branch, Category, City, Customer, CutFeeType, CutOption, DeliveryZone, Order, OrderItem, OrderStatus,
   PaymentMethod, PriceList, Product, Receiving, Rider, Role, Setting, StaffUser, StockMovement, Supplier, Voucher,
-  Fulfillment, AuditLog, Banner, StorageType,
+  Fulfillment, AuditLog, Banner, StorageType, CatalogFile,
 } from './types';
 
 // Bump when the seed shape changes: browsers holding an older version reseed once.
-export const STATE_VERSION = 9;
+export const STATE_VERSION = 14;
 
 // Deterministic pseudo-random so the seed looks the same on every reset.
 function rng(seed: number) {
@@ -36,33 +36,85 @@ const branches: Branch[] = [
   },
 ];
 
-const categories: Category[] = [
-  { id: 'cat-beef', name: 'Beef', icon: '🥩', sort: 1, photo: '/images/photos/beef-steak.jpg' },
-  { id: 'cat-pork', name: 'Pork', icon: '🥓', sort: 2, photo: '/images/photos/cat-pork.jpg' },
-  { id: 'cat-chicken', name: 'Chicken', icon: '🍗', sort: 3, photo: '/images/photos/cat-chicken.jpg' },
-  { id: 'cat-processed', name: 'Processed Meats', icon: '🌭', sort: 4, photo: '/images/photos/cat-processed.jpg' },
-  { id: 'cat-seafood', name: 'Seafood', icon: '🐟', sort: 5, photo: '/images/photos/cat-seafood.jpg' },
-  { id: 'cat-grocery', name: 'Groceries', icon: '🛒', sort: 6, photo: '/images/photos/cat-grocery.jpg' },
+const topCategories: Category[] = [
+  { id: 'cat-beef', name: 'Beef', icon: '🥩', sort: 1, photo: '/images/photos/beef-steak.jpg', color: '#c8151d', soldBy: 'kg', coldChain: true, description: 'Fresh local beef, cut to order.' },
+  { id: 'cat-pork', name: 'Pork', icon: '🥓', sort: 2, photo: '/images/photos/cat-pork.jpg', color: '#a8612e', soldBy: 'kg', coldChain: true, description: 'Local pork, cut fresh every morning.' },
+  { id: 'cat-chicken', name: 'Chicken', icon: '🍗', sort: 3, photo: '/images/photos/cat-chicken.jpg', color: '#e0a33a', soldBy: 'kg', coldChain: true, description: 'Farm-fresh chicken, whole or in parts.' },
+  { id: 'cat-processed', name: 'Processed Meats', icon: '🌭', sort: 4, photo: '/images/photos/cat-processed.jpg', color: '#8b2f6e', soldBy: 'pack', coldChain: true, description: 'House-made longganisa, tocino and more.' },
+  { id: 'cat-seafood', name: 'Seafood', icon: '🐟', sort: 5, photo: '/images/photos/cat-seafood.jpg', color: '#1f6f6a', soldBy: 'kg', coldChain: true, description: 'Fresh catch from the Digos fish port.' },
+  { id: 'cat-grocery', name: 'Groceries', icon: '🛒', sort: 6, photo: '/images/photos/cat-grocery.jpg', color: '#6f6764', soldBy: 'piece', coldChain: false, description: 'Rice, sauces and everything for the pot.' },
 ];
 
-/** Cut & preparation options (spec: whole, sliced, cubed, ground, for adobo, for sinigang, for BBQ …). */
-const cutOptions: CutOption[] = [
-  { id: 'co-whole', name: 'Whole / as is', fee: 0, active: true },
-  { id: 'co-sliced', name: 'Sliced', fee: 0, active: true },
-  { id: 'co-thin', name: 'Thin-sliced', fee: 10, active: true },
-  { id: 'co-cubed', name: 'Cubed', fee: 0, active: true },
-  { id: 'co-ground', name: 'Ground', fee: 20, active: true },
-  { id: 'co-adobo', name: 'For adobo', fee: 0, active: true },
-  { id: 'co-sinigang', name: 'For sinigang', fee: 0, active: true },
-  { id: 'co-bbq', name: 'For BBQ', fee: 0, active: true },
-  { id: 'co-kawali', name: 'For lechon kawali', fee: 0, active: true },
-  { id: 'co-nilaga', name: 'For nilaga / bulalo', fee: 0, active: true },
-  { id: 'co-steak', name: 'Steak cut (thick)', fee: 0, active: true },
-  { id: 'co-tapa', name: 'For tapa (thin)', fee: 10, active: true },
-  { id: 'co-tinola', name: 'For tinola', fee: 0, active: true },
-  { id: 'co-cutup', name: 'Cut-up (8 pcs)', fee: 0, active: true },
-  { id: 'co-deboned', name: 'Deboned', fee: 30, active: true },
+// Subcategories: [id, parent, name, hidden, product ids]. Products keep categoryId = the top level.
+const subcategorySeed: [string, string, string, boolean, string[]][] = [
+  ['sub-beef-steaks', 'cat-beef', 'Steaks', false, ['p-beef-sirloin', 'p-beef-tenderloin', 'p-beef-ribeye', 'p-beef-tbone', 'p-beef-flank', 'p-beef-tapacut']],
+  ['sub-beef-soup', 'cat-beef', 'Soup & stew cuts', false, ['p-beef-brisket', 'p-beef-shortribs', 'p-beef-shank', 'p-beef-kenchi', 'p-beef-chuck', 'p-beef-oxtail', 'p-beef-bones']],
+  ['sub-beef-ground', 'cat-beef', 'Ground & cubes', false, ['p-beef-ground', 'p-beef-cubes', 'p-beef-round']],
+  ['sub-beef-offal', 'cat-beef', 'Offal', false, ['p-beef-tripe', 'p-beef-liver']],
+  ['sub-pork-belly', 'cat-pork', 'Belly & bones', false, ['p-pork-liempo', 'p-pork-belly', 'p-pork-kawali', 'p-pork-neckbones']],
+  ['sub-pork-ribs', 'cat-pork', 'Ribs', false, ['p-pork-spareribs', 'p-pork-babyback']],
+  ['sub-pork-chops', 'cat-pork', 'Chops & steaks', false, ['p-pork-chop', 'p-pork-tenderloin', 'p-pork-loin', 'p-pork-bbq']],
+  ['sub-pork-roast', 'cat-pork', 'Roast & stew cuts', false, ['p-pork-kasim', 'p-pork-pigue', 'p-pork-shoulder', 'p-pork-sinigang']],
+  ['sub-pork-ground', 'cat-pork', 'Ground', false, ['p-pork-ground']],
+  ['sub-pork-pata', 'cat-pork', 'Pata & trotters', false, ['p-pork-pata']],
+  ['sub-pork-offal', 'cat-pork', 'Offal', true, ['p-pork-ears', 'p-pork-liver', 'p-pork-intestine', 'p-pork-maskara']],
+  ['sub-chicken-parts', 'cat-chicken', 'Whole & parts', false, ['p-chicken-whole', 'p-chicken-legquarter', 'p-chicken-drumstick', 'p-chicken-thigh', 'p-chicken-wings']],
+  ['sub-chicken-fillets', 'cat-chicken', 'Breast & fillets', false, ['p-chicken-breast', 'p-chicken-fillet', 'p-chicken-thighfillet', 'p-chicken-ground']],
+  ['sub-chicken-cuts', 'cat-chicken', 'Adobo & tinola cuts', false, ['p-chicken-tinola', 'p-chicken-adobo']],
+  ['sub-chicken-offal', 'cat-chicken', 'Offal & extras', false, ['p-chicken-liver', 'p-chicken-gizzard', 'p-chicken-feet', 'p-chicken-neck', 'p-chicken-skin']],
+  ['sub-proc-longganisa', 'cat-processed', 'Longganisa & tocino', false, ['p-longganisa', 'p-garlic-longganisa', 'p-skinless', 'p-tocino', 'p-chicken-tocino', 'p-beef-tapa']],
+  ['sub-proc-ham', 'cat-processed', 'Ham, bacon & hotdogs', false, ['p-hotdog', 'p-ham', 'p-bacon', 'p-cornedbeef', 'p-embutido']],
+  ['sub-proc-ready', 'cat-processed', 'Ready to cook', false, ['p-nuggets', 'p-bbq-skewers', 'p-siomai']],
+  ['sub-sea-fish', 'cat-seafood', 'Fresh fish', false, ['p-tilapia', 'p-bangus', 'p-galunggong', 'p-tuna-belly', 'p-pompano', 'p-boneless-bangus', 'p-cream-dory']],
+  ['sub-sea-shellfish', 'cat-seafood', 'Shellfish & squid', false, ['p-shrimp', 'p-squid', 'p-mussels']],
+  ['sub-gro-pantry', 'cat-grocery', 'Rice & pantry', false, ['p-rice', 'p-eggs', 'p-oil', 'p-charcoal', 'p-cola']],
+  ['sub-gro-sauces', 'cat-grocery', 'Sauces & condiments', false, ['p-soy', 'p-vinegar', 'p-patis', 'p-bbq-marinade', 'p-ketchup', 'p-oyster']],
+  ['sub-gro-spices', 'cat-grocery', 'Spices & mixes', false, ['p-sinigang-mix', 'p-adobo-mix', 'p-pepper', 'p-salt', 'p-sugar']],
+  ['sub-gro-produce', 'cat-grocery', 'Fresh produce', false, ['p-garlic', 'p-onion', 'p-calamansi', 'p-ginger', 'p-tomato', 'p-lemongrass']],
 ];
+const subcategories: Category[] = subcategorySeed.map(([id, parentId, name, hidden], i) => ({
+  id, name, parentId, icon: topCategories.find((c) => c.id === parentId)!.icon,
+  sort: subcategorySeed.slice(0, i).filter((x) => x[1] === parentId).length + 1,
+  ...(hidden ? { hidden: true } : {}),
+}));
+const SUBCATEGORY_OF: Record<string, string> = Object.fromEntries(subcategorySeed.flatMap(([id, , , , pids]) => pids.map((pid) => [pid, id])));
+const categories: Category[] = [...topCategories, ...subcategories];
+
+/** Cut & preparation options. Ids are kept from earlier versions where the option still exists, so old orders keep their references. */
+const BEEF = 'cat-beef', PORK = 'cat-pork', CHICKEN = 'cat-chicken', SEAFOOD = 'cat-seafood';
+const cutOptions: CutOption[] = [
+  { id: 'co-whole', name: 'Whole / as is', fee: 0, feeType: 'free', prepMins: 0, categoryIds: [BEEF, PORK, CHICKEN, SEAFOOD], active: true },
+  { id: 'co-cubed', name: 'Cubed (stew)', fee: 0, feeType: 'free', prepMins: 5, categoryIds: [BEEF, PORK], active: true, instructions: 'About 3 cm cubes. Trim large fat caps.' },
+  { id: 'co-steak', name: 'Steak cut (thick)', fee: 0, feeType: 'free', prepMins: 5, categoryIds: [BEEF, PORK], active: true, instructions: 'About 2.5 cm thick, across the grain.' },
+  { id: 'co-thin', name: 'Sliced thin (samgyup)', fee: 20, feeType: 'kg', prepMins: 10, categoryIds: [BEEF, PORK], active: true, instructions: '3 mm on the slicer. Layer flat on paper.' },
+  { id: 'co-tinola', name: 'For tinola', fee: 0, feeType: 'free', prepMins: 5, categoryIds: [CHICKEN], active: true, instructions: 'Chop into serving pieces, bone in.' },
+  { id: 'co-adobo', name: 'For adobo', fee: 0, feeType: 'free', prepMins: 5, categoryIds: [PORK, CHICKEN], active: true, instructions: 'Chop into 4-5 cm pieces, bone in.' },
+  { id: 'co-ground', name: 'Ground (fresh)', fee: 10, feeType: 'kg', prepMins: 8, categoryIds: [BEEF, PORK, CHICKEN], active: true, instructions: 'Medium plate, ground once. Clean the grinder between meats.' },
+  { id: 'co-deboned', name: 'Deboned', fee: 30, feeType: 'kg', prepMins: 10, categoryIds: [CHICKEN, SEAFOOD], active: true },
+  { id: 'co-butterfly', name: 'Butterflied', fee: 15, feeType: 'piece', prepMins: 5, categoryIds: [SEAFOOD], active: true },
+  { id: 'co-cleaned', name: 'Cleaned & scaled', fee: 0, feeType: 'free', prepMins: 8, categoryIds: [SEAFOOD], active: true, instructions: 'Scale, gut and rinse. Keep the head on unless asked.' },
+  { id: 'co-skinless', name: 'Skin removed', fee: 0, feeType: 'free', prepMins: 5, categoryIds: [PORK, CHICKEN], active: false },
+];
+
+// Older option ids (v12 and before) -> the option that replaced them.
+const LEGACY_CUT: Record<string, string> = {
+  'co-sliced': 'co-thin', 'co-tapa': 'co-thin', 'co-bbq': 'co-thin',
+  'co-sinigang': 'co-cubed', 'co-kawali': 'co-cubed', 'co-nilaga': 'co-cubed', 'co-cutup': 'co-adobo',
+};
+// Extra options per product on top of the row's list.
+const EXTRA_CUTS: Record<string, string[]> = {
+  'p-pork-liempo': ['co-skinless'], 'p-pork-belly': ['co-skinless'], 'p-pork-kasim': ['co-steak', 'co-skinless'], 'p-pork-pigue': ['co-skinless'],
+  'p-pork-shoulder': ['co-steak'], 'p-pork-chop': ['co-steak'], 'p-pork-loin': ['co-steak'], 'p-pork-tenderloin': ['co-steak'],
+  'p-chicken-whole': ['co-skinless'], 'p-chicken-breast': ['co-skinless'], 'p-chicken-thigh': ['co-skinless'], 'p-chicken-drumstick': ['co-skinless'],
+  'p-chicken-legquarter': ['co-skinless'], 'p-chicken-fillet': ['co-adobo'],
+  'p-tilapia': ['co-cleaned', 'co-butterfly', 'co-deboned'], 'p-bangus': ['co-cleaned', 'co-butterfly'], 'p-pompano': ['co-cleaned', 'co-butterfly'],
+  'p-galunggong': ['co-cleaned'], 'p-squid': ['co-cleaned'], 'p-tuna-belly': ['co-deboned'],
+};
+/** Map a product row's cut list onto the current options: legacy ids remapped, extras added, only options offered on its category. */
+function productCuts(id: string, categoryId: string, ids: string[] = []) {
+  const want = new Set([...ids.map((x) => LEGACY_CUT[x] ?? x), ...(EXTRA_CUTS[id] ?? [])]);
+  return cutOptions.filter((c) => want.has(c.id) && (!c.categoryIds || c.categoryIds.includes(categoryId))).map((c) => c.id);
+}
 
 const BEEF_CUTS = ['co-whole', 'co-sliced', 'co-cubed', 'co-ground', 'co-nilaga', 'co-steak', 'co-tapa'];
 const PORK_CUTS = ['co-whole', 'co-sliced', 'co-thin', 'co-cubed', 'co-ground', 'co-adobo', 'co-sinigang', 'co-bbq', 'co-kawali'];
@@ -294,6 +346,8 @@ const PHOTO: Record<string, string> = {
   'p-cola': 'soda',
 };
 const photo = (key: string) => `/images/photos/${key}.jpg`;
+/** Products switched off in the customer app at Digos (offline:b-dgs tag). */
+const HIDDEN_AT_DIGOS = ['p-pork-ears', 'p-chicken-skin'];
 
 const products: Product[] = productRows.map((r, i) => ({
   id: r[0],
@@ -302,6 +356,7 @@ const products: Product[] = productRows.map((r, i) => ({
   name: r[1],
   brand: r[2],
   categoryId: r[3],
+  subcategoryId: SUBCATEGORY_OF[r[0]],
   unit: r[4],
   size: r[5],
   description: r[9] ? `${r[1]}, cut fresh at the Digos branch. Price per kg; the final price is set when weighed.` : `${r[2]} ${r[1]} — ${r[5]}.`,
@@ -310,7 +365,7 @@ const products: Product[] = productRows.map((r, i) => ({
   costPrice: r[7],
   soldByWeight: r[9],
   estWeightKg: r[9] ? 1 : undefined,
-  tags: [r[10] === 'fresh' ? 'chilled' : r[10] === 'frozen' ? 'frozen' : '', r[3] === 'cat-chicken' ? 'halal' : '', 'local'].filter(Boolean),
+  tags: [r[10] === 'fresh' ? 'chilled' : r[10] === 'frozen' ? 'frozen' : '', r[3] === 'cat-chicken' ? 'halal' : '', 'local', HIDDEN_AT_DIGOS.includes(r[0]) ? 'offline:b-dgs' : ''].filter(Boolean),
   status: 'active',
   tax: ['cat-beef', 'cat-pork', 'cat-chicken', 'cat-seafood'].includes(r[3]) || r[9] ? 'exempt' : 'vat',
   aisle: categories.find((c) => c.id === r[3])!.sort,
@@ -318,12 +373,16 @@ const products: Product[] = productRows.map((r, i) => ({
   reorderPoint: r[9] ? 8 : 12,
   featured: ['p-pork-liempo', 'p-beef-shank', 'p-chicken-whole', 'p-pork-bbq', 'p-beef-sirloin', 'p-longganisa'].includes(r[0]),
   storage: r[10],
-  cutOptionIds: r[12] && r[12].length ? r[12] : undefined,
+  cutOptionIds: ((ids) => (ids.length ? ids : undefined))(productCuts(r[0], r[3], r[12])),
   weightChoices: r[9] ? [0.5, 1, 1.5, 2] : undefined,
   minWeightKg: r[9] ? 0.25 : undefined,
 }));
 
-const priceLists: PriceList[] = [{ id: 'pl-main', name: 'Main (Global)', scope: 'global', active: true, items: {} }];
+const priceLists: PriceList[] = [
+  { id: 'pl-main', name: 'Main (Global)', scope: 'global', active: true, items: {} },
+  // Digos branch overrides (shown as "Base ₱… · override" on the Products list).
+  { id: 'pl-digos', name: 'Digos branch prices', scope: 'branch', scopeId: 'b-dgs', active: true, items: { 'p-beef-ribeye': 850, 'p-pork-liempo': 375, 'p-tilapia': 170 } },
+];
 
 function makeMovements(sales: StockMovement[] = []): StockMovement[] {
   const r = rng(7);
@@ -388,8 +447,39 @@ const customers: Customer[] = customerSeed.map((c, i) => ({
 const riders: Rider[] = [
   { id: 'r-1', name: 'Jomar Villar', phone: '0917 800 0001', type: 'own', vehicle: 'motorcycle', plate: 'MDA 4521', branchIds: ['b-dgs'], status: 'online', rating: 4.9, lat: 6.7505, lng: 125.358, codHeld: 1250, tripsToday: 6, earningsToday: 540, documents: [{ name: "Driver's License", expires: daysAgo(-300), status: 'approved' }, { name: 'OR/CR', expires: daysAgo(-120), status: 'approved' }] },
   { id: 'r-2', name: 'Kevin Uy', phone: '0917 800 0002', type: 'own', vehicle: 'motorcycle', plate: 'MDB 1188', branchIds: ['b-dgs'], status: 'online', rating: 4.8, lat: 6.746, lng: 125.355, codHeld: 0, tripsToday: 4, earningsToday: 360, documents: [{ name: "Driver's License", expires: daysAgo(-20), status: 'approved' }] },
-  { id: 'r-3', name: 'Ramon Diaz', phone: '0917 800 0003', type: 'own', vehicle: 'motorcycle', plate: 'MDC 2210', branchIds: ['b-dgs'], status: 'offline', rating: 4.7, lat: 6.752, lng: 125.36, codHeld: 0, tripsToday: 0, earningsToday: 0, documents: [{ name: "Driver's License", expires: daysAgo(-500), status: 'approved' }] },
-  { id: 'r-4', name: 'Liza Fernandez', phone: '0917 800 0004', type: 'own', vehicle: 'motorcycle', plate: 'NBC 7712', branchIds: ['b-dgs'], status: 'online', rating: 4.9, lat: 6.748, lng: 125.362, codHeld: 480, tripsToday: 5, earningsToday: 610, documents: [{ name: "Driver's License", expires: daysAgo(-200), status: 'approved' }] },
+  { id: 'r-3', name: 'Ramon Diaz', phone: '0917 800 0003', type: 'own', vehicle: 'motorcycle', plate: 'MDC 2210', branchIds: ['b-dgs'], status: 'offline', offlineSince: minsAgo(75), rating: 4.7, lat: 6.752, lng: 125.36, codHeld: 0, tripsToday: 0, earningsToday: 0, documents: [{ name: "Driver's License", expires: daysAgo(-500), status: 'approved' }] },
+  { id: 'r-4', name: 'Liza Fernandez', phone: '0917 800 0004', type: 'own', vehicle: 'motorcycle', plate: 'NBC 7712', branchIds: ['b-dgs'], status: 'online', rating: 4.9, lat: 6.748, lng: 125.362, codHeld: 480, tripsToday: 5, earningsToday: 610, documents: [{ name: "Driver's License", expires: daysAgo(-200), status: 'approved' }] },  // More own riders for the Digos branch, spread within ~2.5 km of the shop.
+  // [id, name, plate, rating, km from shop, bearing°, status, trips today, offline since (mins ago)]
+  ...([
+    ['r-5', 'Mae Santos', 'NBA 5512', 5.0, 0.9, 200, 'online', 4],
+    ['r-6', 'Paolo Garcia', 'MDE 3307', 4.7, 1.1, 320, 'online', 3],
+    ['r-7', 'Dennis Aquino', 'MDG 6671', 4.4, 1.4, 60, 'online', 5],
+    ['r-8', 'Joel Reyes', 'MDF 8820', 4.5, 1.6, 150, 'online', 2],
+    ['r-9', 'Elmer Sison', 'MDP 2245', 4.4, 1.7, 250, 'online', 3],
+    ['r-10', 'Jessa Flores', 'NBF 9054', 4.7, 1.9, 20, 'online', 4],
+    ['r-11', 'Arnel Dela Peña', 'MDJ 3381', 4.6, 2.0, 110, 'online', 3],
+    ['r-12', 'Bong Navarro', 'MDL 7120', 4.3, 2.1, 280, 'online', 2],
+    ['r-13', 'Carlo Dizon', 'NBD 2268', 4.5, 2.2, 340, 'online', 4],
+    ['r-14', 'Rey Mercado', 'MDQ 5904', 4.6, 2.3, 190, 'online', 1],
+    ['r-15', 'Nestor Gomez', 'MDR 1457', 4.2, 2.4, 80, 'online', 2],
+    ['r-16', 'Allan Ramos', 'NBG 6633', 4.7, 2.5, 230, 'online', 3],
+    ['r-17', 'Gina Torres', 'NBJ 4012', 4.8, 2.6, 130, 'online', 2],
+    ['r-18', 'Ronnie Valdez', 'MDS 8876', 4.4, 2.7, 300, 'online', 1],
+    // At capacity: each carries two of today's live deliveries (see makeOrders).
+    ['r-19', 'Ren Abad', 'MDA 9031', 4.6, 0.2, 90, 'online', 5],
+    ['r-20', 'Mark Lopez', 'MDH 7302', 4.6, 0.7, 170, 'online', 4],
+    ['r-21', 'Rico Tan', 'MDB 4410', 4.8, 0.8, 30, 'online', 6],
+    ['r-22', 'Rose Manalo', 'NBH 4407', 4.8, 1.0, 260, 'online', 5],
+    ['r-23', 'Lito Pascual', 'MDK 5530', 4.5, 1.2, 120, 'offline', 0, 75],
+    ['r-24', 'Vince Ocampo', 'MDN 1903', 4.3, 1.8, 210, 'offline', 0, 75],
+  ] as [string, string, string, number, number, number, Rider['status'], number, number?][]).map(([id, name, plate, rating, km, deg, status, trips, offMins], i): Rider => ({
+    id, name, phone: `0917 800 ${String(Number(id.slice(2))).padStart(4, '0')}`, type: 'own', vehicle: 'motorcycle', plate, branchIds: ['b-dgs'], status,
+    offlineSince: offMins ? minsAgo(offMins) : undefined, rating,
+    lat: Math.round((6.7497 + (km / 111) * Math.cos((deg * Math.PI) / 180)) * 10000) / 10000,
+    lng: Math.round((125.3572 + (km / 110.4) * Math.sin((deg * Math.PI) / 180)) * 10000) / 10000,
+    codHeld: i % 3 === 0 ? 300 + i * 40 : 0, tripsToday: trips, earningsToday: trips * 90,
+    documents: [{ name: "Driver's License", expires: daysAgo(-(120 + i * 15)), status: 'approved' }, { name: 'OR/CR', expires: daysAgo(-(90 + i * 10)), status: 'approved' }],
+  })),
 ];
 
 const zones: DeliveryZone[] = [
@@ -474,23 +564,45 @@ function buildItems(r: () => number, count: number): OrderItem[] {
     if (picked.has(p.id)) continue;
     picked.add(p.id);
     const cutId = p.cutOptionIds?.[Math.floor(r() * p.cutOptionIds.length)];
-    const cut = cutId ? cutOptions.find((c) => c.id === cutId) : undefined;
+    const cut = cutId ? cutOptions.find((c) => c.id === cutId && c.active) : undefined;
     items.push({
       productId: p.id, name: p.name, image: p.image, unitPrice: p.basePrice, qty: p.soldByWeight ? 1 : 1 + Math.floor(r() * 2), soldByWeight: p.soldByWeight,
       estWeightKg: p.soldByWeight ? [0.5, 1, 1, 1.5, 2][Math.floor(r() * 5)] : undefined,
-      cut: cut ? { id: cut.id, name: cut.name, fee: cut.fee } : undefined, storage: p.storage,
+      cut: cut ? cutSnapshot(cut) : undefined, storage: p.storage,
       subPref: (['similar', 'ask', 'refund'] as const)[Math.floor(r() * 3)], pickStatus: 'pending',
     });
   }
   return items;
 }
 
+/** Order-item snapshot of a cut option (keeps the price rule and prep time it was ordered with). */
+export function cutSnapshot(c: CutOption): NonNullable<OrderItem['cut']> {
+  return { id: c.id, name: c.name, fee: c.feeType === 'free' ? 0 : c.fee, feeType: c.feeType, prepMins: c.prepMins || undefined };
+}
+
+/** Cut / preparation charge for one line.
+ *  'kg': fee x the line's weight (weighed items) | 'piece': fee x qty (weighed lines have qty 1, so once per line)
+ *  | 'free': 0 | no feeType (older data): flat fee per line. A per-kg fee on an item not sold by weight is charged x qty. */
+export function cutCharge(cut: { fee: number; feeType?: CutFeeType } | undefined, soldByWeight: boolean, qty: number, kg?: number) {
+  if (!cut || !cut.fee || cut.feeType === 'free') return 0;
+  if (cut.feeType === 'kg' && soldByWeight) return Math.round(cut.fee * (kg ?? 1) * 100) / 100;
+  if (cut.feeType === 'kg' || cut.feeType === 'piece') return cut.fee * qty;
+  return cut.fee;
+}
+
+/** Extra prep minutes from the cuts chosen on an order: only the longest one counts (not summed). */
+export function cutPrepMins(items: OrderItem[]) {
+  return items.reduce((n, i) => Math.max(n, i.cut?.prepMins ?? 0), 0);
+}
+
 export function lineTotal(i: OrderItem) {
   if (i.pickStatus === 'removed' || i.pickStatus === 'out_of_stock') return 0;
   const price = i.substitute?.status === 'accepted' ? i.substitute.unitPrice : i.unitPrice;
-  const cutFee = i.cut?.fee ?? 0; // flat charge per line for the chosen cut / preparation
-  if (i.soldByWeight) return Math.round((price * (i.actualWeightKg ?? i.estWeightKg ?? 1) + cutFee) * 100) / 100;
-  return price * i.qty + cutFee;
+  if (i.soldByWeight) {
+    const kg = i.actualWeightKg ?? i.estWeightKg ?? 1;
+    return Math.round((price * kg + cutCharge(i.cut, true, 1, kg)) * 100) / 100;
+  }
+  return price * i.qty + cutCharge(i.cut, false, i.qty);
 }
 
 const STATUS_FLOW: OrderStatus[] = ['placed', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
@@ -528,7 +640,7 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
         channel: 'app', fulfillment: ful, address: ful === 'delivery' ? cu.addresses[0] : undefined,
         slot: 'ASAP', items, subtotal, deliveryFee: fee, serviceFee, discount: 0, total,
         paymentMethod: pm, paymentStatus: cancelled ? 'refunded' : 'paid', refundedAmount: cancelled ? total : 0,
-        status, autoConfirmed: ['gcash', 'maya', 'card'].includes(pm), riderId: ful === 'delivery' ? riders[Math.floor(r() * riders.length)].id : undefined,
+        status, autoConfirmed: ['gcash', 'maya', 'card'].includes(pm), riderId: ful === 'delivery' ? riders[Math.floor(r() * 4)].id : undefined,
         pickupPin: PIN(r), prepMinutes: 25, placedAt: placed, updatedAt: placed, completedAt: placed,
         timeline: [{ status: 'placed', at: placed, by: cu.name }, { status, at: placed, by: 'System' }], internalNotes: [],
         rating: !cancelled && r() > 0.4 ? { order: r() > 0.15 ? 5 : 3, rider: r() > 0.2 ? 5 : 4, tags: r() > 0.7 ? ['Great service'] : [] } : undefined,
@@ -542,8 +654,8 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
   }
 
   // Today: live orders across every status so the Order Desk demo is rich.
-  const live: [OrderStatus, Fulfillment, PaymentMethod, number, number][] = [
-    // status, fulfillment, pay, minutesAgo, customerIdx
+  const live: [OrderStatus, Fulfillment, PaymentMethod, number, number, string?][] = [
+    // status, fulfillment, pay, minutesAgo, customerIdx, riderId (optional)
     ['awaiting_confirmation', 'delivery', 'cod', 3, 0],
     ['awaiting_confirmation', 'pickup', 'pay_at_pickup', 8, 3],
     ['confirmed', 'delivery', 'gcash', 12, 1],
@@ -555,12 +667,25 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
     ['delivered', 'delivery', 'gcash', 120, 5],
     ['collected', 'pickup', 'gcash', 150, 6],
     ['cancelled', 'delivery', 'card', 95, 8],
+    // Rider workload for the dispatch demo (appended so the order numbers above stay the same):
+    // three riders on their way to collect one order, four riders at capacity (two deliveries each).
+    ['ready', 'delivery', 'gcash', 30, 3, 'r-5'],
+    ['ready', 'delivery', 'cod', 28, 5, 'r-7'],
+    ['ready', 'delivery', 'maya', 26, 8, 'r-10'],
+    ['out_for_delivery', 'delivery', 'gcash', 44, 1, 'r-19'],
+    ['out_for_delivery', 'delivery', 'cod', 41, 9, 'r-19'],
+    ['out_for_delivery', 'delivery', 'gcash', 47, 4, 'r-20'],
+    ['out_for_delivery', 'delivery', 'card', 43, 6, 'r-20'],
+    ['out_for_delivery', 'delivery', 'cod', 46, 2, 'r-21'],
+    ['out_for_delivery', 'delivery', 'gcash', 42, 7, 'r-21'],
+    ['out_for_delivery', 'delivery', 'maya', 48, 0, 'r-22'],
+    ['out_for_delivery', 'delivery', 'gcash', 45, 3, 'r-22'],
   ];
-  for (const [status, ful, pm, ago, cIdx] of live) {
+  for (const [status, ful, pm, ago, cIdx, rid] of live) {
     const cu = customers[cIdx];
     const items = buildItems(r, 2 + Math.floor(r() * 4));
     if (['ready', 'out_for_delivery', 'delivered', 'collected'].includes(status)) items.forEach((i) => { i.pickStatus = 'picked'; if (i.soldByWeight) i.actualWeightKg = Math.round((i.estWeightKg ?? 1) * 1.04 * 100) / 100; });
-    if (status === 'preparing') items.slice(0, 1).forEach((i) => (i.pickStatus = 'picked'));
+    if (status === 'preparing') items.slice(0, 1).forEach((i) => { i.pickStatus = 'picked'; if (i.soldByWeight) i.actualWeightKg = Math.round((i.estWeightKg ?? 1) * 1.04 * 100) / 100; });
     const subtotal = Math.round(items.reduce((s, i) => s + lineTotal(i), 0) * 100) / 100;
     const fee = ful === 'delivery' ? 59 : 0;
     const serviceFee = ['gcash', 'maya', 'card'].includes(pm) ? Math.round(subtotal * 0.02) : 0;
@@ -570,9 +695,14 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
     const paid = ['gcash', 'maya', 'card'].includes(pm) || ['delivered', 'collected'].includes(status);
     const flow = ful === 'pickup' ? ['placed', 'confirmed', 'preparing', 'ready', 'collected'] : STATUS_FLOW;
     const reached = status === 'awaiting_confirmation' ? ['placed', 'awaiting_confirmation'] : status === 'cancelled' ? ['placed', 'confirmed', 'cancelled'] : flow.slice(0, flow.indexOf(status) + 1);
-    const timeline = reached.map((st, i) => ({ status: st as OrderStatus, at: minsAgo(ago - i * Math.max(1, Math.floor(ago / (reached.length + 1)))), by: i === 0 ? cu.name : st === 'confirmed' && paid ? 'System (auto-confirm)' : st === 'out_for_delivery' || st === 'delivered' ? 'Rider' : 'Ana Cruz' }));
-    const riderId = ['out_for_delivery', 'delivered'].includes(status) ? 'r-1' : undefined;
+    const timeline: Order['timeline'] = reached.map((st, i) => ({ status: st as OrderStatus, at: minsAgo(ago - i * Math.max(1, Math.floor(ago / (reached.length + 1)))), by: i === 0 ? cu.name : st === 'confirmed' && paid ? 'System (auto-confirm)' : st === 'out_for_delivery' || st === 'delivered' ? 'Rider' : 'Ana Cruz' }));
+    const riderId = rid ?? (['out_for_delivery', 'delivered'].includes(status) ? 'r-1' : undefined);
     const cold = isCold(items);
+    if (status === 'ready') {
+      // Pack check logged just before "ready", as the Order Desk does when staff mark an order ready.
+      const readyAt = timeline[timeline.length - 1].at;
+      timeline.splice(timeline.length - 1, 0, { status: 'edit', at: new Date(new Date(readyAt).getTime() - 2 * 60_000).toISOString(), by: 'Ana Cruz', note: `Pack check: 1 bag(s)${cold ? ', packed in insulated bag with ice packs' : ''}, labeled` });
+    }
     orders.push({
       id, number, branchId: b.id, customerId: cu.id, customerName: cu.name, customerMobile: cu.mobile, channel: 'app', fulfillment: ful,
       address: ful === 'delivery' ? cu.addresses[0] : undefined, slot: ago === 12 ? 'Today 2:00–3:00 PM' : 'ASAP', items,
@@ -588,6 +718,7 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
       acknowledged: status !== 'awaiting_confirmation',
       coldChain: cold, maxDeliveryMins: ful === 'delivery' && cold ? 60 : undefined,
       insulatedPacked: ['ready', 'out_for_delivery', 'delivered', 'collected'].includes(status) ? true : undefined,
+      bagCount: status === 'ready' ? 1 : undefined,
       riderBagConfirmed: ['out_for_delivery', 'delivered'].includes(status) ? true : undefined,
     });
     if (['delivered', 'collected'].includes(status)) {
@@ -620,6 +751,43 @@ const receivings: Receiving[] = [
   },
 ];
 
+// ---------- Catalog Import / export history (files kept with their contents) ----------
+const csvText = (rows: (string | number)[][]) =>
+  rows.map((r) => r.map((c) => { const v = String(c); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(',')).join('\n');
+/** "nov-15" style date for file names. */
+const fileDay = (at: string) => new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toLowerCase().replace(' ', '-');
+
+function makeCatalogFiles(): CatalogFile[] {
+  const digos = priceLists.find((l) => l.id === 'pl-digos')!;
+  const digosPrice = (p: Product) => digos.items[p.id] ?? p.basePrice;
+  const inApp = (p: Product) => (p.tags.includes('offline:b-dgs') ? 'no' : 'yes');
+  const catName = (id: string) => categories.find((c) => c.id === id)?.name ?? '';
+  const at1 = daysAgo(3, 16, 12);
+  const at2 = daysAgo(3, 16, 5);
+  const at3 = daysAgo(8, 19, 48);
+  const at4 = daysAgo(15, 9, 20);
+  const imported = products.slice(0, 96);
+  return [
+    {
+      id: 'cf-1', kind: 'import', fileName: `digos-prices-${fileDay(at1)}.csv`, at: at1, user: 'Hannah Admin', applied: imported.length, skipped: 1,
+      content: csvText([['SKU', 'Name', 'Digos price', 'In app'], ...imported.map((p) => [p.sku, p.name, digosPrice(p), inApp(p)]), ['SKU-0999', 'Old promo pack', 'abc', 'yes']]),
+    },
+    {
+      id: 'cf-2', kind: 'export', fileName: `products-digos-${new Date(at2).toLocaleDateString('en-CA')}.csv`, at: at2, user: 'Hannah Admin', rows: products.length,
+      content: csvText([['SKU', 'Name', 'Category', 'Base price', 'Digos price', 'In app'], ...products.map((p) => [p.sku, p.name, catName(p.categoryId), p.basePrice, digosPrice(p), inApp(p)])]),
+    },
+    {
+      id: 'cf-3', kind: 'import', fileName: `stock-count-${fileDay(at3)}.csv`, at: at3, user: 'Ana Cruz', failed: 'columns not recognised',
+      content: csvText([['Item code', 'Description', 'Qty counted'], ...products.slice(0, 12).map((p, i) => [p.barcode, p.name, 10 + ((i * 7) % 25)])]),
+    },
+    {
+      id: 'cf-4', kind: 'export', fileName: 'cut-options.csv', at: at4, user: 'Hannah Admin', rows: cutOptions.length,
+      content: csvText([['Name', 'Add-on price', 'Charged', 'Prep time (min)', 'Categories', 'Offered'],
+        ...cutOptions.map((c) => [c.name, c.fee, c.feeType ?? 'piece', c.prepMins ?? 0, (c.categoryIds ?? []).map(catName).join('; '), c.active ? 'yes' : 'no'])]),
+    },
+  ];
+}
+
 export function createSeed(): AppState {
   const { orders, saleMovements } = makeOrders();
   return {
@@ -635,13 +803,14 @@ export function createSeed(): AppState {
     rejectReasons: ['Item(s) out of stock', 'Outside delivery hours', 'Address outside delivery zone', 'Suspected fraud', 'Branch overloaded', 'Customer requested cancellation'],
     cart: [
       { productId: 'p-pork-liempo', qty: 1, weightKg: 1, cutId: 'co-adobo', subPref: 'ask', note: 'Less fat, please' },
-      { productId: 'p-chicken-whole', qty: 1, weightKg: 1.5, cutId: 'co-cutup', subPref: 'similar' },
+      { productId: 'p-chicken-whole', qty: 1, weightKg: 1.5, cutId: 'co-tinola', subPref: 'similar' },
       { productId: 'p-sinigang-mix', qty: 2, subPref: 'similar' },
     ],
     session: { staffUserId: 'u-1', branchId: 'b-dgs', shopperId: 'cu-1', shopperSignedIn: false, riderId: 'r-1' },
     counters: { order: 10200 + orders.length + 10, po: 1, transfer: 1, receiving: 3 },
     cutOptions,
     receivings,
+    catalogFiles: makeCatalogFiles(),
     platform: {
       signedIn: false,
       ownerName: 'LAP IT Owner',
@@ -661,7 +830,7 @@ export function createSeed(): AppState {
         content: { on: true },
         otp: { on: false, reason: 'No OTP at launch', changedAt: daysAgo(3) },
       },
-      limits: { cities: 1, branches: 1, staff: 10, riders: 6, products: 120, smsPerMonth: 500 },
+      limits: { cities: 1, branches: 1, staff: 10, riders: 30, products: 120, smsPerMonth: 500 },
       smsUsed: 0,
       forcedSignOut: [],
       blockedPermissions: [],

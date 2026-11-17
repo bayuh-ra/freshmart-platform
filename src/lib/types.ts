@@ -35,6 +35,16 @@ export interface Category {
   sort: number;
   /** Optional photo URL for category tiles (falls back to the emoji). */
   photo?: string;
+  /** Hex colour for the category dot / swatch (top-level categories). */
+  color?: string;
+  /** How products in this category are sold by default (top-level categories). */
+  soldBy?: 'kg' | 'pack' | 'piece';
+  /** Short line shown under the name in the customer app. */
+  description?: string;
+  /** Hidden categories (and their products) are not shown to shoppers. */
+  hidden?: boolean;
+  /** Adds the insulated-bag check at packing and the 60-min delivery limit (top-level categories). */
+  coldChain?: boolean;
 }
 
 export type UnitOfMeasure = 'pc' | 'pack' | 'kg' | 'g' | 'L';
@@ -47,6 +57,8 @@ export interface Product {
   name: string;
   brand: string;
   categoryId: ID;
+  /** Subcategory (a Category whose parentId is categoryId). */
+  subcategoryId?: ID;
   unit: UnitOfMeasure;
   size: string; // "1 L", "500 g"
   description: string;
@@ -80,10 +92,21 @@ export type StorageType = 'fresh' | 'frozen' | 'shelf';
 export interface CutOption {
   id: ID;
   name: string;
-  /** Extra charge per order line (0 = free). */
+  /** Price add-on amount (0 = free). Its unit comes from feeType. */
   fee: number;
   active: boolean;
+  /** How the fee is charged: free, per kg of the line's weight, or per piece (× qty; weighed lines count as 1).
+   *  Missing (older data) = a flat charge per order line. */
+  feeType?: CutFeeType;
+  /** Shown to pickers next to the cut on the pick list. */
+  instructions?: string;
+  /** Extra minutes added to the order's prep target when a line uses this option. */
+  prepMins?: number;
+  /** Top-level categories this option is offered on (missing = any category the product lists it for). */
+  categoryIds?: ID[];
 }
+
+export type CutFeeType = 'free' | 'kg' | 'piece';
 
 /** Direct Receiving: a supplier delivery recorded straight into stock, no purchase order. */
 export interface Receiving {
@@ -230,8 +253,8 @@ export interface OrderItem {
   estWeightKg?: number; // estimated total weight
   actualWeightKg?: number; // set at packing
   note?: string;
-  /** Cut / preparation chosen by the shopper (fee is a flat charge for the line). */
-  cut?: { id: ID; name: string; fee: number };
+  /** Cut / preparation chosen by the shopper — a snapshot at order time. See cutCharge() for how fee/feeType are charged. */
+  cut?: { id: ID; name: string; fee: number; feeType?: CutFeeType; prepMins?: number };
   storage?: StorageType;
   subPref: SubstitutionPref;
   pickStatus: 'pending' | 'picked' | 'short' | 'out_of_stock' | 'substituted' | 'removed';
@@ -304,6 +327,8 @@ export interface Rider {
   plate: string;
   branchIds: ID[];
   status: 'online' | 'offline' | 'suspended' | 'pending';
+  /** When the rider went off shift (demo data; shown in the rider picker). */
+  offlineSince?: string;
   rating: number;
   lat: number;
   lng: number;
@@ -525,4 +550,24 @@ export interface AppState {
   platform: PlatformState;
   cutOptions: CutOption[];
   receivings: Receiving[];
+  /** Catalog Import / export history (the demo keeps each file's text so it can be downloaded again). */
+  catalogFiles?: CatalogFile[];
+}
+
+/** One file imported into or exported from the catalog. */
+export interface CatalogFile {
+  id: ID;
+  kind: 'import' | 'export';
+  fileName: string;
+  at: string; // ISO
+  user: string;
+  /** Export: rows in the file. */
+  rows?: number;
+  /** Import: rows applied / skipped. */
+  applied?: number;
+  skipped?: number;
+  /** Import that could not be read, e.g. "columns not recognised". */
+  failed?: string;
+  /** File contents (CSV text, or the Excel-compatible HTML table for .xls). */
+  content: string;
 }

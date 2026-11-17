@@ -79,7 +79,7 @@ export default function EndOfDayPage() {
   };
 
   if (!can(s, 'orders.view')) {
-    return <DashboardLayout title="End of Day" eyebrow="Order Desk"><AccessDenied permission="orders.view" /></DashboardLayout>;
+    return <DashboardLayout title="End of Day" eyebrow="Order desk"><AccessDenied permission="orders.view" /></DashboardLayout>;
   }
 
   const by = currentUserName(s);
@@ -176,7 +176,7 @@ export default function EndOfDayPage() {
   const counterVariance = countedNum !== undefined ? countedNum - counterExpected : undefined;
 
   return (
-    <DashboardLayout title="End of Day" eyebrow="Order Desk">
+    <DashboardLayout title="End of Day" eyebrow="Order desk">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{branch?.name} · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h1>

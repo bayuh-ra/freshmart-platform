@@ -2,13 +2,13 @@
 // Every rule reads admin settings; nothing is hard-coded per branch.
 
 import type {
-  AppState, Branch, DeliveryZone, Order, OrderChannel, OrderItem, OrderStatus, PaymentMethod, Product,
+  AppState, Branch, CutFeeType, DeliveryZone, Order, OrderChannel, OrderItem, OrderStatus, PaymentMethod, Product,
   SettingValue, Fulfillment, Address, SubstitutionPref, Voucher,
 } from './types';
-import { lineTotal } from './seed';
+import { cutCharge, cutPrepMins, cutSnapshot, lineTotal } from './seed';
 import { addAudit, addNotification, currentUserName, mutate, uid } from './store';
 
-export { lineTotal };
+export { cutCharge, cutPrepMins, cutSnapshot, lineTotal };
 
 // ---------------- Formatting ----------------
 export function peso(n: number) {
@@ -16,6 +16,11 @@ export function peso(n: number) {
 }
 export function pesoShort(n: number) {
   return `₱${Math.round(n ?? 0).toLocaleString('en-PH')}`;
+}
+/** Price add-on of a cut option for labels: '' (free), '+₱20/kg', '+₱15/pc', or '+₱20' (older flat per-line fee). */
+export function cutFeeText(cut?: { fee: number; feeType?: CutFeeType }) {
+  if (!cut || !cut.fee || cut.feeType === 'free') return '';
+  return `+${pesoShort(cut.fee)}${cut.feeType === 'kg' ? '/kg' : cut.feeType === 'piece' ? '/pc' : ''}`;
 }
 export function timeAgo(isoStr: string) {
   const s = Math.max(0, Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000));
@@ -249,7 +254,7 @@ export function placeOrder(input: PlaceOrderInput): string {
         unitPrice: l.priceOverride ?? getPrice(s, p.id, b.id, input.channel),
         qty: p.soldByWeight && l.weightKg ? 1 : l.qty, soldByWeight: p.soldByWeight,
         estWeightKg: p.soldByWeight ? (l.weightKg ?? l.qty * (p.estWeightKg ?? 1)) : undefined,
-        cut: cut ? { id: cut.id, name: cut.name, fee: cut.fee } : undefined, storage: p.storage,
+        cut: cut ? cutSnapshot(cut) : undefined, storage: p.storage,
         note: l.note, subPref: l.subPref, pickStatus: 'pending',
       };
     });
@@ -276,7 +281,8 @@ export function placeOrder(input: PlaceOrderInput): string {
       subtotal, deliveryFee: fee.fee, serviceFee, discount, total: 0, feeRule: fee.rule, voucherCode: input.voucherCode,
       paymentMethod: input.paymentMethod, paymentStatus: online ? 'paid' : input.paymentMethod === 'cash' ? 'paid' : 'pending', refundedAmount: 0,
       status: autoConfirm ? 'preparing' : 'awaiting_confirmation', autoConfirmed: autoConfirm, pickupPin: String(1000 + Math.floor(Math.random() * 9000)),
-      prepMinutes: num(getSetting(s, 'prepMinutes', b.id)) || 20, placedAt: now, updatedAt: now,
+      // Prep target = branch default + extra minutes of each chosen cut / preparation.
+      prepMinutes: (num(getSetting(s, 'prepMinutes', b.id)) || 20) + cutPrepMins(items), placedAt: now, updatedAt: now,
       timeline: [{ status: 'placed', at: now, by }], internalNotes: [], riderInstructions: input.riderInstructions, acknowledged: false,
     };
     // Cold chain: fresh or frozen items need an insulated bag and a maximum delivery time.

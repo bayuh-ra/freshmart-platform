@@ -39,6 +39,8 @@ function customerStats(s: AppState) {
   return m;
 }
 
+const urlParam = (name: string) => (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(name));
+
 export default function CustomersPage() {
   const s = useStore();
   const [q, setQ] = useState('');
@@ -47,7 +49,8 @@ export default function CustomersPage() {
   const [source, setSource] = useState('all');
   const [blocked, setBlocked] = useState('all');
   const [segment, setSegment] = useState<Segment>('all');
-  const [openId, setOpenId] = useState<string | null>(null);
+  // ?c= from the top-bar search opens that customer's profile.
+  const [openId, setOpenId] = useState<string | null>(() => urlParam('c'));
 
   const stats = useMemo(() => customerStats(s), [s]);
   const now = useNow();

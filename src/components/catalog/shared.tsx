@@ -2,7 +2,7 @@
 
 // Small helpers shared by the Catalog, Pricing, Inventory and Purchasing pages.
 
-import type { AppState, MovementType, Product, PurchaseOrder, Transfer } from '@/src/lib/types';
+import type { AppState, Category, MovementType, Product, PurchaseOrder, Transfer } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
 
 export function Field({ label, hint, children, className }: { label: string; hint?: React.ReactNode; children: React.ReactNode; className?: string }) {
@@ -65,6 +65,34 @@ export function categoryTree(s: AppState) {
   };
   walk(undefined, 0);
   return out;
+}
+
+/** True when the product sits in `catId` (or one of its subcategories), via categoryId or subcategoryId. */
+export function inCategory(s: AppState, p: Product, catId: string): boolean {
+  const ids = descendantIds(s, catId);
+  return ids.includes(p.categoryId) || (!!p.subcategoryId && ids.includes(p.subcategoryId));
+}
+
+/** Top-level categories in customer-app order. */
+export function topCategories(s: AppState): Category[] {
+  return s.categories.filter((c) => !c.parentId).sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
+}
+
+/** Subcategories of a category in sort order. */
+export function subcategoriesOf(s: AppState, parentId: string): Category[] {
+  return s.categories.filter((c) => c.parentId === parentId).sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
+}
+
+/** Colour swatches offered for top-level categories. */
+export const CATEGORY_COLORS: { name: string; hex: string }[] = [
+  { name: 'Red', hex: '#c8151d' }, { name: 'Copper', hex: '#a8612e' }, { name: 'Gold', hex: '#e0a33a' }, { name: 'Plum', hex: '#8b2f6e' },
+  { name: 'Teal', hex: '#1f6f6a' }, { name: 'Blue', hex: '#2c4f9e' }, { name: 'Grey', hex: '#6f6764' },
+];
+/** Category colour (a subcategory uses its parent's). */
+export function categoryColor(s: AppState, id?: string): string {
+  const c = s.categories.find((x) => x.id === id);
+  const top = c?.parentId ? s.categories.find((x) => x.id === c.parentId) : c;
+  return top?.color ?? '#6f6764';
 }
 
 export const offlineTag = (branchId: string) => `offline:${branchId}`;

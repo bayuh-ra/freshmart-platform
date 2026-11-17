@@ -70,9 +70,9 @@ export default function NewOrderPage() {
   }, [prodQ, s.products]);
 
   if (!can(s, 'orders.create')) {
-    return <DashboardLayout title="New Order" eyebrow="Order Desk"><AccessDenied permission="orders.create" /></DashboardLayout>;
+    return <DashboardLayout title="New Order" eyebrow="Order desk"><AccessDenied permission="orders.create" /></DashboardLayout>;
   }
-  if (!branch) return <DashboardLayout title="New Order" eyebrow="Order Desk"><EmptyState title="Select a branch" /></DashboardLayout>;
+  if (!branch) return <DashboardLayout title="New Order" eyebrow="Order desk"><EmptyState title="Select a branch" /></DashboardLayout>;
 
   const price = (pid: string) => getPrice(s, pid, branchId, channel);
   const productOf = (pid: string) => s.products.find((p) => p.id === pid);
@@ -196,8 +196,8 @@ export default function NewOrderPage() {
   ];
 
   return (
-    <DashboardLayout title="New Walk-in / Phone Order" eyebrow="Order Desk">
-      <Link href="/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#c8151d] mb-3"><ArrowLeft className="w-4 h-4" {...ICON} />Live orders</Link>
+    <DashboardLayout title="New Walk-in / Phone Order" eyebrow="Order desk">
+      <Link href="/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#c8151d] mb-3"><ArrowLeft className="w-4 h-4" {...ICON} />Orders</Link>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px] items-start">
         <div className="space-y-5 min-w-0">
           {/* Channel */}

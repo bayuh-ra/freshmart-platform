@@ -16,7 +16,7 @@ import { addAudit, addNotification, currentUserName, mutate, uid, useStore } fro
 import { branchName, can, exportCsv, fmtDateTime, getSetting, num, onHand, peso, pesoShort, stockSummary, timeAgo } from '@/src/lib/logic';
 import type { AppState, MovementType, Product, Receiving, Transfer } from '@/src/lib/types';
 import {
-  Field, MOVEMENT_LABEL, MovementBadge, StateBadge, categoryPath, categoryTree, descendantIds, stockState,
+  Field, MOVEMENT_LABEL, MovementBadge, StateBadge, categoryPath, categoryTree, inCategory, stockState,
 } from '@/src/components/catalog/shared';
 import { cn } from '@/src/lib/utils';
 import { ProductImage } from '@/src/components/ProductImage';
@@ -122,7 +122,7 @@ function StockLevels({ s, levels, onCard, onRecord }: { s: AppState; levels: Lev
     if (filter === 'low' && l.state !== 'low') return false;
     if (filter === 'out' && l.state !== 'out') return false;
     if (filter === 'attention' && l.state === 'ok') return false;
-    if (cat !== 'all' && !descendantIds(s, cat).includes(l.p.categoryId)) return false;
+    if (cat !== 'all' && !inCategory(s, l.p, cat)) return false;
     const t = q.trim().toLowerCase();
     return !t || `${l.p.name} ${l.p.sku} ${l.p.brand}`.toLowerCase().includes(t);
   });
@@ -363,8 +363,7 @@ function StockTake({ s, branchId, canEdit }: { s: AppState; branchId: string; ca
   const [reason, setReason] = useState('Cycle count');
   const [approved, setApproved] = useState(false);
   const limit = num(getSetting(s, 'adjustApprovalUnits', branchId));
-  const ids = descendantIds(s, cat);
-  const items = s.products.filter((p) => ids.includes(p.categoryId) && p.status !== 'discontinued');
+  const items = s.products.filter((p) => inCategory(s, p, cat) && p.status !== 'discontinued');
   const rows = items.map((p) => {
     const sys = onHand(s, p.id, branchId);
     const raw = counts[p.id];

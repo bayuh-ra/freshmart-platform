@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/src/components/ui/sh
 import { addAudit, currentUserName, mutate, uid, useStore } from '@/src/lib/store';
 import { CHANNEL_LABEL, can, cityName, exportCsv, fmtDate, fmtDateTime, getPriceInfo, getSetting, num, peso } from '@/src/lib/logic';
 import type { AppState, OrderChannel, PriceList } from '@/src/lib/types';
-import { Field, StateBadge, Toggle, categoryPath, categoryTree, descendantIds, roundPrice, today } from '@/src/components/catalog/shared';
+import { Field, StateBadge, Toggle, categoryPath, categoryTree, inCategory, roundPrice, today } from '@/src/components/catalog/shared';
 import { cn } from '@/src/lib/utils';
 import { ProductImage } from '@/src/components/ProductImage';
 
@@ -355,9 +355,8 @@ function BulkUpdate({ s, canEdit }: { s: AppState; canEdit: boolean }) {
   const tree = categoryTree(s);
 
   const preview = useMemo(() => {
-    const catIds = by === 'category' ? descendantIds(s, target) : [];
     return s.products
-      .filter((p) => (by === 'category' ? catIds.includes(p.categoryId) : by === 'brand' ? p.brand === target : p.supplierId === target))
+      .filter((p) => (by === 'category' ? inCategory(s, p, target) : by === 'brand' ? p.brand === target : p.supplierId === target))
       .map((p) => {
         const raw = mode === 'pct' ? p.basePrice * (1 + value / 100) : p.basePrice + value;
         const next = Math.max(0.25, roundPrice(raw, rounding));

@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { ChevronLeft, Minus, Phone, Plus, Snowflake, X } from 'lucide-react';
 import type { Address, AppState, Branch, CartLine, Customer, CutOption, Fulfillment, Product, SubstitutionPref } from '@/src/lib/types';
 import { mutate } from '@/src/lib/store';
-import { available, getPriceInfo, getSetting, num, peso } from '@/src/lib/logic';
+import { available, cutCharge, getPriceInfo, getSetting, num, peso } from '@/src/lib/logic';
 import { cn } from '@/src/lib/utils';
 import { ProductImage as PhotoImg, isPhoto } from '@/src/components/ProductImage';
 
@@ -159,9 +159,22 @@ export function meatMaxMins(s: AppState, branchId: string) {
 
 export const MEAT_CAT_IDS = ['cat-beef', 'cat-pork', 'cat-chicken'];
 
+/** Hidden categories (and subcategories) are not shown to shoppers, nor are their products. */
+export function categoryHidden(s: AppState, id?: string) {
+  return !!id && !!s.categories.find((c) => c.id === id)?.hidden;
+}
+/** Active product whose category and subcategory are not hidden. */
+export function shopVisible(s: AppState, p: Product) {
+  return p.status === 'active' && !categoryHidden(s, p.categoryId) && !categoryHidden(s, p.subcategoryId);
+}
+/** Product sits in category `id` (top level via categoryId, subcategory via subcategoryId or a nested categoryId). */
+export function inShopCategory(s: AppState, p: Product, id: string) {
+  return p.categoryId === id || p.subcategoryId === id || s.categories.some((c) => c.parentId === id && c.id === p.categoryId);
+}
+
 /** Top-level categories with Beef, Pork and Chicken first. */
 export function orderedTopCategories(s: AppState) {
-  const tops = s.categories.filter((c) => !c.parentId).sort((a, b) => a.sort - b.sort);
+  const tops = s.categories.filter((c) => !c.parentId && !c.hidden).sort((a, b) => a.sort - b.sort);
   const meat = MEAT_CAT_IDS.map((id) => tops.find((c) => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c);
   return [...meat, ...tops.filter((c) => !meat.includes(c))];
 }
@@ -179,16 +192,21 @@ export function defaultKg(p: Product) {
 export function lineWeight(c: CartLine, p: Product) {
   return c.weightKg ?? (p.estWeightKg ?? 1) * c.qty;
 }
-/** Active cut / preparation options offered for a product. */
+/** Cut / preparation options a product offers: switched on, and offered on the product's category (when the option names categories). */
 export function cutsFor(s: AppState, p: Product): CutOption[] {
-  return (p.cutOptionIds ?? []).map((id) => (s.cutOptions ?? []).find((c) => c.id === id)).filter((c): c is CutOption => !!c && c.active);
+  return (p.cutOptionIds ?? []).map((id) => (s.cutOptions ?? []).find((c) => c.id === id))
+    .filter((c): c is CutOption => !!c && c.active && (!c.categoryIds || c.categoryIds.includes(p.categoryId)));
 }
 export function cutById(s: AppState, id?: string) {
   return id ? (s.cutOptions ?? []).find((c) => c.id === id) : undefined;
 }
-/** Estimated line total — same formula as lineTotal(): weight × price/kg (or qty × price) + flat cut fee. */
-export function lineEst(p: Product, price: number, qtyOrKg: number, cutFee: number) {
-  return Math.round((price * qtyOrKg + cutFee) * 100) / 100;
+/** Cut charge for a cart line — same rule as lineTotal() (per kg × weight, per piece × qty, or flat per line). */
+export function cartCutFee(p: Product, qtyOrKg: number, cut?: CutOption) {
+  return p.soldByWeight ? cutCharge(cut, true, 1, qtyOrKg) : cutCharge(cut, false, qtyOrKg);
+}
+/** Estimated line total — same formula as lineTotal(): weight × price/kg (or qty × price) + cut charge. */
+export function lineEst(p: Product, price: number, qtyOrKg: number, cut?: CutOption) {
+  return Math.round((price * qtyOrKg + cartCutFee(p, qtyOrKg, cut)) * 100) / 100;
 }
 export const isCold = (p?: Product) => p?.storage === 'fresh' || p?.storage === 'frozen';
 

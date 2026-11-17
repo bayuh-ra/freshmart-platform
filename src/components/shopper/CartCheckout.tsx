@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Bike, Check, ChevronRight, CircleCheck, Clock, CreditCard, LoaderCircle, MapPin, MessageSquareText, Pencil, ShieldCheck, Snowflake, Store, Ticket, Trash2, TriangleAlert, Wallet } from 'lucide-react';
 import type { Fulfillment, PaymentMethod } from '@/src/lib/types';
 import { mutate } from '@/src/lib/store';
-import { applyVoucher, available, calcDeliveryFee, getPriceInfo, getSetting, num, ONLINE_METHODS, PAYMENT_LABEL, peso, placeOrder, pesoShort } from '@/src/lib/logic';
+import { applyVoucher, available, calcDeliveryFee, cutFeeText, getPriceInfo, getSetting, num, ONLINE_METHODS, PAYMENT_LABEL, peso, placeOrder, pesoShort } from '@/src/lib/logic';
 import { moduleOn } from '@/src/lib/platform';
 import { cn } from '@/src/lib/utils';
 import {
@@ -13,7 +13,7 @@ import {
   fmtKg, isCold, lineEst, lineKey, lineWeight, makeSlots, meatMaxMins, minKg, useMe, useShop,
 } from './shared';
 
-/** Cart lines with estimated totals: weight × price/kg (or qty × price) + flat cut fee — same as lineTotal(). */
+/** Cart lines with estimated totals: weight × price/kg (or qty × price) + cut charge — same as lineTotal(). */
 function useCartLines() {
   const { s, branch } = useShop();
   return s.cart
@@ -25,7 +25,7 @@ function useCartLines() {
       const cut = cutById(s, c.cutId);
       const kg = p.soldByWeight ? lineWeight(c, p) : undefined;
       const qty = p.soldByWeight ? 1 : Math.min(c.qty, Math.max(avail, 0));
-      const total = lineEst(p, info.price, kg ?? qty, cut?.fee ?? 0);
+      const total = lineEst(p, info.price, kg ?? qty, cut);
       return { key: lineKey(c), c, p, info, avail, cut, kg, qty, total };
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
@@ -117,7 +117,7 @@ export function CartScreen() {
                     </div>
                     <p className="text-xs text-gray-600 -mt-2">
                       {l.p.soldByWeight ? `${fmtKg(l.kg!)} · ${peso(l.info.price)}/kg` : `${l.p.size} · ${peso(l.info.price)}`}
-                      {l.cut && ` · ${l.cut.name}${l.cut.fee > 0 ? ` (+${peso(l.cut.fee)})` : ''}`}
+                      {l.cut && ` · ${l.cut.name}${cutFeeText(l.cut) ? ` (${cutFeeText(l.cut)})` : ''}`}
                     </p>
                     <StorageBadge p={l.p} className="mt-1" />
                     {l.avail === 0 ? (
@@ -142,7 +142,7 @@ export function CartScreen() {
                     {cuts.length > 0 && (
                       <select value={l.c.cutId ?? ''} onChange={(e) => cartUpdate(l.key, { cutId: e.target.value || null })} aria-label="Cut and preparation" className="h-11 md:h-9 max-w-[45%] rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-[#c8151d]">
                         {!l.c.cutId && <option value="">Choose cut</option>}
-                        {cuts.map((c) => <option key={c.id} value={c.id}>{c.name}{c.fee > 0 ? ` (+${peso(c.fee)})` : ''}</option>)}
+                        {cuts.map((c) => <option key={c.id} value={c.id}>{c.name}{cutFeeText(c) ? ` (${cutFeeText(c)})` : ''}</option>)}
                       </select>
                     )}
                     <Link href={editHref(l.p.id, l.key)} className="w-11 h-11 md:w-9 md:h-9 shrink-0 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:border-[#c8151d] hover:text-[#c8151d]" aria-label={`Edit ${l.p.name}`}><Pencil className="w-4 h-4" /></Link>

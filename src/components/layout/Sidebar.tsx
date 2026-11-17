@@ -14,7 +14,11 @@ import { useStore } from '@/src/lib/store';
 import { can } from '@/src/lib/logic';
 import { moduleForPath, moduleOn } from '@/src/lib/platform';
 
-interface NavItem { label: string; href: string; icon: React.ReactNode; perm?: string; badge?: 'orders' | 'support'; newTab?: boolean }
+interface NavItem {
+  label: string; href: string; icon: React.ReactNode; perm?: string; badge?: 'orders' | 'support'; newTab?: boolean;
+  /** Other routes that keep this item highlighted (e.g. the Products page tabs). */
+  also?: string[];
+}
 interface NavModule { key: string; label: string; href?: string; icon?: React.ReactNode; items?: NavItem[] }
 
 const I = (C: React.ComponentType<{ className?: string; strokeWidth?: number }>) => <C className="w-5 h-5" strokeWidth={1.75} />;
@@ -26,7 +30,7 @@ export const navModules: NavModule[] = [
   {
     key: 'orders', label: 'Order Desk',
     items: [
-      { label: 'Live Orders', href: '/orders', icon: I(ClipboardList), perm: 'orders.view', badge: 'orders' },
+      { label: 'Orders', href: '/orders', icon: I(ClipboardList), perm: 'orders.view', badge: 'orders' },
       { label: 'New Walk-in / Phone', href: '/orders/new', icon: I(PlusCircle), perm: 'orders.create' },
       { label: 'End of Day', href: '/orders/end-of-day', icon: I(CalendarCheck), perm: 'orders.view' },
     ],
@@ -34,7 +38,7 @@ export const navModules: NavModule[] = [
   {
     key: 'catalog', label: 'Catalog & Stock',
     items: [
-      { label: 'Products', href: '/catalog/products', icon: I(Package), perm: 'catalog.view' },
+      { label: 'Products', href: '/catalog/products', icon: I(Package), perm: 'catalog.view', also: ['/catalog/categories', '/catalog/cuts', '/catalog/import'] },
       { label: 'Price Lists', href: '/catalog/pricing', icon: I(Tags), perm: 'pricing.view' },
       { label: 'Inventory', href: '/inventory', icon: I(Warehouse), perm: 'inventory.view' },
       { label: 'Purchasing', href: '/purchasing', icon: I(Truck), perm: 'inventory.view' },
@@ -96,8 +100,8 @@ function useNav() {
     .filter((m) => !m.items || m.items.length > 0);
 
   const allHrefs = navModules.flatMap((m) => m.items?.map((i) => i.href) ?? []);
-  const isActiveHref = (href: string) => {
-    if (pathname === href) return true;
+  const isActiveHref = (href: string, also: string[] = []) => {
+    if (pathname === href || also.some((a) => pathname === a || pathname.startsWith(a + '/'))) return true;
     if (!pathname.startsWith(href + '/')) return false;
     // Prefer the most specific match (e.g. /orders/new over /orders)
     return !allHrefs.some((h) => h !== href && h.startsWith(href) && (pathname === h || pathname.startsWith(h + '/')));
@@ -143,7 +147,7 @@ function NavList({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
             )}
             <ul className="space-y-0.5">
               {m.items?.map((item) => {
-                const active = isActiveHref(item.href);
+                const active = isActiveHref(item.href, item.also);
                 const badge = badgeFor(item.badge);
                 return (
                   <li key={item.href}>

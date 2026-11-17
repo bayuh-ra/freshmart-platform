@@ -6,7 +6,7 @@ import { Bike, Camera, Check, ChevronRight, CircleX, Download, Flag, MessageCirc
 import type { Conversation, Order, OrderItem } from '@/src/lib/types';
 import { mutate, uid } from '@/src/lib/store';
 import {
-  available, fmtDateTime, fmtTime, getSetting, lineTotal, num, OPEN_STATUSES, PAYMENT_LABEL, peso, riderPosition, setOrderStatus, STATUS_LABEL,
+  available, cutFeeText, fmtDateTime, fmtTime, getSetting, lineTotal, num, OPEN_STATUSES, PAYMENT_LABEL, peso, riderPosition, setOrderStatus, STATUS_LABEL,
 } from '@/src/lib/logic';
 import { moduleOn } from '@/src/lib/platform';
 import { useTick } from '@/src/lib/store';
@@ -14,15 +14,15 @@ import { StatusBadge } from '@/src/components/common';
 import { MapView } from '@/src/components/MapView';
 import { cn } from '@/src/lib/utils';
 import {
-  CallBranchButton, Card, Container, DEFAULT_SUB_PREF, MobileActionBar, PrimaryButton, ScreenHeader, Sheet, fmtKg, lineKey, ratingsOn as ratingsEnabled, roundKg,
+  CallBranchButton, Card, Container, DEFAULT_SUB_PREF, MobileActionBar, PrimaryButton, ScreenHeader, Sheet, cutsFor, fmtKg, lineKey, ratingsOn as ratingsEnabled, roundKg,
   useDocumentTitle, useMe, useShop,
 } from './shared';
 import { ProductImage as PhotoImg } from '@/src/components/ProductImage';
 
-/** "1.5 kg est. · Sliced (+₱10)" or "× 2 · Sliced". */
+/** "1.5 kg est. · Sliced thin (+₱20/kg)" or "× 2 · Sliced". */
 function itemDetail(i: OrderItem) {
   const amount = i.soldByWeight ? `${fmtKg(i.actualWeightKg ?? i.estWeightKg ?? 1)}${i.actualWeightKg ? '' : ' est.'}` : `× ${i.qty}`;
-  return `${amount}${i.cut ? ` · ${i.cut.name}${i.cut.fee > 0 ? ` (+${peso(i.cut.fee)})` : ''}` : ''}`;
+  return `${amount}${i.cut ? ` · ${i.cut.name}${cutFeeText(i.cut) ? ` (${cutFeeText(i.cut)})` : ''}` : ''}`;
 }
 
 // ---------- helpers ----------
@@ -103,7 +103,7 @@ export function OrdersScreen() {
       for (const i of o.items) {
         const p = d.products.find((x) => x.id === i.productId);
         if (!p || p.status !== 'active' || available(d, p.id, branch.id) <= 0) { flagged.push(i.name); continue; }
-        const cutId = i.cut && d.cutOptions?.some((c) => c.id === i.cut!.id && c.active) ? i.cut.id : undefined;
+        const cutId = i.cut && cutsFor(d, p).some((c) => c.id === i.cut!.id) ? i.cut.id : undefined;
         const kg = p.soldByWeight ? i.estWeightKg ?? (p.estWeightKg ?? 1) * i.qty : undefined;
         const l = d.cart.find((c) => lineKey(c) === lineKey({ productId: p.id, cutId }));
         if (l) {
@@ -587,7 +587,7 @@ export function ReceiptScreen({ orderId }: { orderId: string }) {
                   <span>{i.soldByWeight ? `${fmtKg(i.actualWeightKg ?? i.estWeightKg ?? 1)}${i.actualWeightKg ? '' : ' est.'} × ${peso(i.substitute?.status === 'accepted' ? i.substitute.unitPrice : i.unitPrice)}/kg` : `${i.qty} × ${peso(i.substitute?.status === 'accepted' ? i.substitute.unitPrice : i.unitPrice)}`}</span>
                   {isDone(o) && supportOn && <button onClick={() => setReport(i)} className="text-[#a3111a] font-semibold">Report a problem</button>}
                 </div>
-                {i.cut && <p className="text-[11px] text-gray-600">{i.cut.name}{i.cut.fee > 0 ? ` · cut fee ${peso(i.cut.fee)}` : ''}</p>}
+                {i.cut && <p className="text-[11px] text-gray-600">{i.cut.name}{cutFeeText(i.cut) ? ` · cut fee ${cutFeeText(i.cut)}` : ''}</p>}
               </div>
             ))}
           </div>

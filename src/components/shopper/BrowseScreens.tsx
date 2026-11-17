@@ -5,13 +5,13 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Bell, BellRing, ChevronDown, ChevronLeft, ChevronRight, Clock, MapPin, Scale, Search, ShieldCheck, ShoppingCart, Snowflake, Store, TriangleAlert, X } from 'lucide-react';
 import type { Product } from '@/src/lib/types';
-import { available, distanceKm, getPriceInfo, peso } from '@/src/lib/logic';
+import { available, cutFeeText, distanceKm, getPriceInfo, peso } from '@/src/lib/logic';
 import { cn } from '@/src/lib/utils';
 import { Cleavers } from '@/src/components/shop/Cleavers';
 import {
   Card, Container, MEAT_CAT_IDS, MobileActionBar, PrimaryButton, ProductGrid, ProductImage, ProductRow, ProductTile, ScreenHeader, SectionTitle, Stepper, StorageBadge,
-  cartAdd, cartUpdate, cutById, cutsFor, defaultKg, fmtKg, lineEst, lineKey, lineWeight, matchScore, meatMaxMins, minKg, orderedTopCategories, popularity, roundKg,
-  useDocumentTitle, useShop,
+  cartAdd, cartCutFee, cartUpdate, cutById, cutsFor, defaultKg, fmtKg, lineEst, lineKey, lineWeight, matchScore, meatMaxMins, minKg, orderedTopCategories, popularity, roundKg,
+  useDocumentTitle, useShop, shopVisible, inShopCategory, categoryHidden,
 } from './shared';
 import { ProductImage as PhotoImg } from '@/src/components/ProductImage';
 
@@ -28,14 +28,14 @@ const MEAT_TILE_COLORS = ['from-[#7d0d12] to-[#c8151d]', 'from-[#2a2322] to-[#54
 // ====================== HOME ======================
 export function HomeScreen() {
   const { s, shopper, branch, address, effMode, mode, deliveryOk, deliveryBlockReason, pickupBranch, setMode, setBranchOverride, openLocation } = useShop();
-  const products = s.products.filter((p) => p.status === 'active');
+  const products = s.products.filter((p) => shopVisible(s, p));
   const featured = products.filter((p) => p.featured);
   const buyAgain = useMemo(() => {
     if (!shopper) return [];
     const ids: string[] = [];
     s.orders.filter((o) => o.customerId === shopper.id).forEach((o) => o.items.forEach((i) => { if (!ids.includes(i.productId)) ids.push(i.productId); }));
-    return ids.map((id) => s.products.find((p) => p.id === id && p.status === 'active')).filter(Boolean).slice(0, 10) as Product[];
-  }, [s.orders, s.products, shopper]);
+    return ids.map((id) => s.products.find((p) => p.id === id && shopVisible(s, p))).filter(Boolean).slice(0, 10) as Product[];
+  }, [s, shopper]);
   const promos = products.filter((p) => { const i = getPriceInfo(s, p.id, branch.id); return !!i.compareAt && i.compareAt > i.price; });
   const tops = orderedTopCategories(s);
   // Meat first: Beef, Pork, Chicken get the big tiles; everything else sits below.
@@ -255,9 +255,8 @@ function bannerCategory(cats: { id: string; name: string; parentId?: string }[],
 // ====================== ALL CATEGORIES ======================
 export function CategoriesScreen() {
   const { s, branch } = useShop();
-  const active = s.products.filter((p) => p.status === 'active');
-  const childIds = (id: string) => [id, ...s.categories.filter((c) => c.parentId === id).map((c) => c.id)];
-  const countIn = (id: string) => active.filter((p) => childIds(id).includes(p.categoryId)).length;
+  const active = s.products.filter((p) => shopVisible(s, p));
+  const countIn = (id: string) => active.filter((p) => inShopCategory(s, p, id)).length;
   const tops = orderedTopCategories(s);
   return (
     <Container className="pb-6">
@@ -265,7 +264,7 @@ export function CategoriesScreen() {
         right={<Link href="/search" className="md:hidden w-11 h-11 rounded-full bg-white border border-[#eadfd6] flex items-center justify-center" aria-label="Search"><Search className="w-5 h-5" /></Link>} />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 md:gap-4">
         {tops.map((c, i) => {
-          const kids = s.categories.filter((k) => k.parentId === c.id).sort((a, b) => a.sort - b.sort);
+          const kids = s.categories.filter((k) => k.parentId === c.id && !k.hidden).sort((a, b) => a.sort - b.sort);
           return (
             <Card key={c.id} className="overflow-hidden">
               <Link href={`/category/${c.id}`} className="w-full flex items-center gap-3 p-3 md:p-4 text-left hover:bg-[#fdf8f4]">
@@ -363,7 +362,8 @@ function Chip({ children, on, onClick }: { children: React.ReactNode; on?: boole
 // ====================== CATEGORY ======================
 export function CategoryScreen({ id }: { id: string }) {
   const { s } = useShop();
-  const cat = s.categories.find((c) => c.id === id);
+  const found = s.categories.find((c) => c.id === id);
+  const cat = found && !found.hidden && !categoryHidden(s, found.parentId) ? found : undefined;
   useDocumentTitle(cat?.name);
   if (!cat) {
     return (
@@ -375,10 +375,9 @@ export function CategoryScreen({ id }: { id: string }) {
     );
   }
   const parent = cat.parentId ? s.categories.find((c) => c.id === cat.parentId) : undefined;
-  const kids = s.categories.filter((c) => c.parentId === cat.id).sort((a, b) => a.sort - b.sort);
-  const ids = [cat.id, ...kids.map((k) => k.id)];
-  const products = s.products.filter((p) => p.status === 'active' && ids.includes(p.categoryId));
-  const countIn = (cid: string) => s.products.filter((p) => p.status === 'active' && (p.categoryId === cid || s.categories.some((c) => c.parentId === cid && c.id === p.categoryId))).length;
+  const kids = s.categories.filter((c) => c.parentId === cat.id && !c.hidden).sort((a, b) => a.sort - b.sort);
+  const products = s.products.filter((p) => shopVisible(s, p) && inShopCategory(s, p, cat.id));
+  const countIn = (cid: string) => s.products.filter((p) => shopVisible(s, p) && inShopCategory(s, p, cid)).length;
   return (
     <Container className="pb-6">
       <nav className="hidden md:flex items-center gap-1 text-sm text-gray-500 pt-6 -mb-4" aria-label="Breadcrumb">
@@ -428,12 +427,12 @@ export function SearchScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const active = s.products.filter((p) => p.status === 'active');
+  const active = s.products.filter((p) => shopVisible(s, p));
   const showSuggest = typing && query.trim() && query.trim() !== submitted;
   const suggestions = showSuggest
     ? active.map((p) => ({ p, sc: matchScore(s, p, query) })).filter((x) => x.sc > 0).sort((a, b) => b.sc - a.sc).slice(0, 6)
     : [];
-  const catSuggestions = showSuggest ? s.categories.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 2) : [];
+  const catSuggestions = showSuggest ? s.categories.filter((c) => !c.hidden && !categoryHidden(s, c.parentId) && c.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 2) : [];
 
   const submit = (text: string) => {
     const t = text.trim();
@@ -531,7 +530,7 @@ export function SearchScreen() {
 // ====================== PRODUCT DETAIL ======================
 export function ProductScreen({ id, editKey }: { id: string; editKey?: string }) {
   const { s, branch, back, flash, replace } = useShop();
-  const p = s.products.find((x) => x.id === id && x.status === 'active');
+  const p = s.products.find((x) => x.id === id && shopVisible(s, x));
   const editLine = editKey ? s.cart.find((c) => lineKey(c) === editKey) : undefined;
   const cuts = p ? cutsFor(s, p) : [];
   const [qty, setQty] = useState(editLine?.qty ?? 1);
@@ -554,13 +553,13 @@ export function ProductScreen({ id, editKey }: { id: string; editKey?: string })
   const avail = available(s, p.id, branch.id);
   const promo = !!info.compareAt && info.compareAt > info.price;
   const cat = s.categories.find((c) => c.id === p.categoryId);
-  const related = s.products.filter((x) => x.status === 'active' && x.categoryId === p.categoryId && x.id !== p.id).slice(0, 10);
+  const related = s.products.filter((x) => shopVisible(s, x) && x.categoryId === p.categoryId && x.id !== p.id).slice(0, 10);
   const min = minKg(p);
   const choices = (p.weightChoices ?? [0.5, 1, 1.5, 2]).filter((w) => w >= min);
   const cut = cuts.find((c) => c.id === cutId);
-  const cutFee = cut?.fee ?? 0;
   const amount = p.soldByWeight ? kg : qty;
-  const est = lineEst(p, info.price, amount, cutFee);
+  const cutFee = cartCutFee(p, amount, cut);
+  const est = lineEst(p, info.price, amount, cut);
   const kgError = p.soldByWeight && (!(Number(kgText) > 0) || Number(kgText) < min) ? `Minimum is ${fmtKg(min)}` : '';
   const inCart = s.cart.filter((c) => c.productId === p.id && (!editLine || c !== editLine));
   const tagMeta: Record<string, { label: string; cls: string; icon?: React.ReactNode }> = {
@@ -681,7 +680,7 @@ export function ProductScreen({ id, editKey }: { id: string; editKey?: string })
                       {cuts.map((c) => (
                         <button key={c.id} onClick={() => setCutId(c.id)} aria-pressed={cutId === c.id} className={cn('min-h-11 rounded-xl border px-3 py-2 text-left text-xs font-semibold flex items-center justify-between gap-1', cutId === c.id ? 'border-[#c8151d] bg-[#fdecec] text-[#a3111a]' : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300')}>
                           <span className="truncate">{c.name}</span>
-                          {c.fee > 0 && <span className="shrink-0 text-[11px] font-semibold text-gray-500">+{peso(c.fee)}</span>}
+                          {cutFeeText(c) && <span className="shrink-0 text-[11px] font-semibold text-gray-500">{cutFeeText(c)}</span>}
                         </button>
                       ))}
                     </div>

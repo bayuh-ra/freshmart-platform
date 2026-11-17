@@ -191,7 +191,7 @@ export function RedeliverDialog({ conv, order, open, onOpenChange }: { conv: Con
       pushMessage(d, conv.id, { from: 'system', text: `Re-delivery order ${o?.number ?? ''} created (${lines.length} item${lines.length > 1 ? 's' : ''}, free of charge).` }, true);
       addAudit(d, { module: 'Support', action: 'Re-delivery created', detail: `${o?.number} for ${order.number} · ${lines.length} items`, branchId: order.branchId });
     });
-    toast.success('Re-delivery order created', { description: 'It is now in the branch Live Orders queue.' });
+    toast.success('Re-delivery order created', { description: 'It is now in the branch Orders board.' });
     onOpenChange(false);
   };
   return (
