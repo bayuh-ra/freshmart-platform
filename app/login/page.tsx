@@ -11,7 +11,7 @@ import { mutate, useStore } from '@/src/lib/store';
 // of the platform's four applications with a matching demo account.
 const PORTALS = [
   { href: '/dashboard', title: 'Admin Dashboard', who: 'Head office · Super Admin', icon: LayoutDashboard, user: 'u-1', desc: 'Cities, branches, catalog, pricing, inventory, riders, settings, roles, reports.' },
-  { href: '/orders', title: 'Order Desk', who: 'Matina branch · Cashier', icon: ClipboardList, user: 'u-4', desc: 'Live order board, confirm, pick, substitute, walk-in & phone orders, pickup handover.' },
+  { href: '/orders', title: 'Order Desk', who: 'Matina branch · Cashier', icon: ClipboardList, user: 'u-3', desc: 'Live order board, confirm, pick, substitute, walk-in & phone orders, pickup handover.' },
   { href: '/shopper', title: 'Shopper App', who: 'Maria Santos · iOS / Android', icon: Smartphone, desc: 'Browse, cart, checkout, pay, live tracking, ratings and support chat.' },
   { href: '/rider', title: 'Rider App', who: 'Jomar Villar · Own rider', icon: Bike, desc: 'Job offers, pickup, navigation, proof of delivery, COD and earnings.', module: 'delivery' as const },
 ];
@@ -52,7 +52,7 @@ export default function LoginPage() {
           <div className="space-y-3">
             {PORTALS.filter((p) => !('module' in p) || moduleOn(s, p.module)).map((p) => (
               <Link key={p.href} href={p.href}
-                onClick={() => { if (p.user) mutate((d) => { d.session.staffUserId = p.user!; d.session.branchId = 'b-mtn'; }); }}
+                onClick={() => { if (p.user) mutate((d) => { d.session.staffUserId = p.user!; d.session.branchId = 'b-dgs'; }); }}
                 className="group flex items-center gap-4 bg-white rounded-2xl border border-[rgba(15,15,26,0.08)] shadow-sm p-4 hover:shadow-md hover:border-[#1e40af]/30 transition-all">
                 <div className="w-12 h-12 rounded-xl bg-[#1e40af]/10 text-[#1e40af] flex items-center justify-center shrink-0">
                   <p.icon className="w-6 h-6" strokeWidth={1.75} />

@@ -1,4 +1,4 @@
-// Core data entities for the Multi-Branch Supermarket platform demo.
+// Core data entities for the Meat Shop Delivery & Ordering platform demo.
 // Mirrors spec section 8 "Core Data Entities" (trimmed to what the demo uses).
 
 export type ID = string;
@@ -61,6 +61,41 @@ export interface Product {
   supplierId?: ID;
   reorderPoint: number;
   featured?: boolean;
+  /** Fresh/chilled, frozen or shelf-stable: drives the label, packing and cold-chain rules. */
+  storage?: StorageType;
+  /** Cut & preparation options the shopper can choose (ids from AppState.cutOptions). */
+  cutOptionIds?: ID[];
+  /** Preset weights (kg) offered for items sold by weight, e.g. [0.5, 1, 1.5, 2]. */
+  weightChoices?: number[];
+  /** Smallest weight (kg) a shopper may order. */
+  minWeightKg?: number;
+}
+
+export type StorageType = 'fresh' | 'frozen' | 'shelf';
+
+/** A reusable cut / preparation option (e.g. "Sliced", "Ground", "For adobo"). */
+export interface CutOption {
+  id: ID;
+  name: string;
+  /** Extra charge per order line (0 = free). */
+  fee: number;
+  active: boolean;
+}
+
+/** Direct Receiving: a supplier delivery recorded straight into stock, no purchase order. */
+export interface Receiving {
+  id: ID;
+  number: string; // RCV-0001
+  branchId: ID;
+  supplierId?: ID;
+  supplierName: string;
+  receiptNo: string; // supplier delivery receipt number
+  hasPhoto: boolean;
+  at: string;
+  by: string;
+  note?: string;
+  status: 'posted' | 'pending_approval';
+  lines: { productId: ID; qty: number; weightKg?: number; cost: number; batch: string; producedOn?: string; expiresOn?: string }[];
 }
 
 export interface PriceList {
@@ -151,6 +186,15 @@ export interface Customer {
   points: number;
   source: 'app' | 'walk_in' | 'phone';
   group?: string;
+  firstName?: string;
+  lastName?: string;
+  username?: string;
+  /** Demo only: stored in the browser. Production stores a password hash on the server. */
+  password?: string;
+  /** Google account email when the shopper signed up or linked with Google. */
+  googleEmail?: string;
+  /** Required profile (name, username, password, phone, address) is filled in. */
+  profileComplete?: boolean;
 }
 
 export type OrderChannel = 'app' | 'walk_in' | 'phone';
@@ -183,6 +227,9 @@ export interface OrderItem {
   estWeightKg?: number; // estimated total weight
   actualWeightKg?: number; // set at packing
   note?: string;
+  /** Cut / preparation chosen by the shopper (fee is a flat charge for the line). */
+  cut?: { id: ID; name: string; fee: number };
+  storage?: StorageType;
   subPref: SubstitutionPref;
   pickStatus: 'pending' | 'picked' | 'short' | 'out_of_stock' | 'substituted' | 'removed';
   substitute?: { productId: ID; name: string; image: string; unitPrice: number; status: 'proposed' | 'accepted' | 'rejected' };
@@ -235,6 +282,14 @@ export interface Order {
   rejectReason?: string;
   bagCount?: number;
   acknowledged: boolean; // staff has seen the new-order alert
+  /** Order has fresh or frozen items: insulated bag + maximum delivery time apply. */
+  coldChain?: boolean;
+  /** Maximum minutes from rider pickup to delivery (cold chain). */
+  maxDeliveryMins?: number;
+  /** Packer confirmed insulated bag + ice packs. */
+  insulatedPacked?: boolean;
+  /** Rider confirmed the insulated bag at pickup. */
+  riderBagConfirmed?: boolean;
 }
 
 export interface Rider {
@@ -349,6 +404,7 @@ export interface Setting {
     | 'Riders'
     | 'Support'
     | 'Feature flags'
+    | 'Meat & cold chain'
     | 'Security';
   type: 'boolean' | 'number' | 'text' | 'select';
   options?: string[];
@@ -396,6 +452,8 @@ export interface Session {
   staffUserId: ID; // "view as" user for RBAC demo
   branchId: ID; // order desk branch
   shopperId: ID; // signed-in shopper in the Shopper App demo
+  /** Customer App demo: false shows the welcome / sign-in screens. */
+  shopperSignedIn: boolean;
   riderId: ID; // signed-in rider in the Rider App demo
 }
 
@@ -418,6 +476,16 @@ export interface PlatformState {
   /** Permissions the Platform Owner removed from the client (a ceiling for every client role, including Super Admin). */
   blockedPermissions: string[];
   log: PlatformLog[];
+}
+
+/** A Customer App cart line. Weighted items use weightKg (qty stays 1); cutId picks a cut option. */
+export interface CartLine {
+  productId: ID;
+  qty: number;
+  weightKg?: number;
+  cutId?: ID;
+  note?: string;
+  subPref: SubstitutionPref;
 }
 
 export interface AppState {
@@ -446,8 +514,10 @@ export interface AppState {
   banners: Banner[];
   rejectReasons: string[];
   /** product ids the shopper has in their cart (Shopper App demo) */
-  cart: { productId: ID; qty: number; note?: string; subPref: SubstitutionPref }[];
+  cart: CartLine[];
   session: Session;
-  counters: { order: number; po: number; transfer: number };
+  counters: { order: number; po: number; transfer: number; receiving: number };
   platform: PlatformState;
+  cutOptions: CutOption[];
+  receivings: Receiving[];
 }

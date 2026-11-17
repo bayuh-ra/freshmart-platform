@@ -350,7 +350,7 @@ function RecordDialog({ s, branchId, initialPid, onClose }: { s: AppState; branc
 // ---------------- (d) Stock take ----------------
 function StockTake({ s, branchId, canEdit }: { s: AppState; branchId: string; canEdit: boolean }) {
   const tree = categoryTree(s);
-  const [cat, setCat] = useState('cat-dairy');
+  const [cat, setCat] = useState('cat-pork');
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('Cycle count');
   const [approved, setApproved] = useState(false);

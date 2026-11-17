@@ -227,7 +227,8 @@ export interface PlaceOrderInput {
   fulfillment: Fulfillment;
   address?: Address;
   slot: string;
-  lines: { productId: string; qty: number; note?: string; subPref: SubstitutionPref; priceOverride?: number }[];
+  /** weightKg: chosen weight for items sold by weight (qty is then 1). cutId: cut / preparation option. */
+  lines: { productId: string; qty: number; weightKg?: number; cutId?: string; note?: string; subPref: SubstitutionPref; priceOverride?: number }[];
   paymentMethod: PaymentMethod;
   voucherCode?: string;
   riderInstructions?: string;
@@ -242,10 +243,13 @@ export function placeOrder(input: PlaceOrderInput): string {
     const cu = s.customers.find((x) => x.id === input.customerId)!;
     const items: OrderItem[] = input.lines.map((l) => {
       const p = s.products.find((x) => x.id === l.productId)!;
+      const cut = l.cutId ? s.cutOptions.find((c) => c.id === l.cutId) : undefined;
       return {
         productId: p.id, name: p.name, image: p.image,
         unitPrice: l.priceOverride ?? getPrice(s, p.id, b.id, input.channel),
-        qty: l.qty, soldByWeight: p.soldByWeight, estWeightKg: p.soldByWeight ? l.qty * (p.estWeightKg ?? 1) : undefined,
+        qty: p.soldByWeight && l.weightKg ? 1 : l.qty, soldByWeight: p.soldByWeight,
+        estWeightKg: p.soldByWeight ? (l.weightKg ?? l.qty * (p.estWeightKg ?? 1)) : undefined,
+        cut: cut ? { id: cut.id, name: cut.name, fee: cut.fee } : undefined, storage: p.storage,
         note: l.note, subPref: l.subPref, pickStatus: 'pending',
       };
     });
@@ -275,6 +279,11 @@ export function placeOrder(input: PlaceOrderInput): string {
       prepMinutes: num(getSetting(s, 'prepMinutes', b.id)) || 20, placedAt: now, updatedAt: now,
       timeline: [{ status: 'placed', at: now, by }], internalNotes: [], riderInstructions: input.riderInstructions, acknowledged: false,
     };
+    // Cold chain: fresh or frozen items need an insulated bag and a maximum delivery time.
+    if (items.some((i) => i.storage === 'fresh' || i.storage === 'frozen')) {
+      order.coldChain = true;
+      if (input.fulfillment === 'delivery') order.maxDeliveryMins = num(getSetting(s, 'meatMaxDeliveryMins', b.id)) || 60;
+    }
     if (autoConfirm) {
       order.timeline.push({ status: 'confirmed', at: now, by: 'System (auto-confirm: paid online)' });
       order.timeline.push({ status: 'preparing', at: now, by: 'System' });

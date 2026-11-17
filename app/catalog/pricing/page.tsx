@@ -338,7 +338,7 @@ function Explorer({ s }: { s: AppState }) {
 // ---------------- Bulk price update ----------------
 function BulkUpdate({ s, canEdit }: { s: AppState; canEdit: boolean }) {
   const [by, setBy] = useState<'category' | 'brand' | 'supplier'>('category');
-  const [target, setTarget] = useState('cat-dairy');
+  const [target, setTarget] = useState('cat-pork');
   const [mode, setMode] = useState<'pct' | 'fixed'>('pct');
   const [value, setValue] = useState(5);
   const rounding = String(getSetting(s, 'rounding'));
