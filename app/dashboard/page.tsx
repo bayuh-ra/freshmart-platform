@@ -1,283 +1,512 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, PieChart, Pie, Cell, Legend,
-} from 'recharts';
-import { ShoppingBag, Wallet, BellRing, Bike, Users, PackageX, Clock, ArrowRight, Trophy } from 'lucide-react';
+import { ArrowRight, ChevronRight, Clock, CheckCircle2, Plus, Snowflake, Store, Truck } from 'lucide-react';
 import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
-import { StatCard, Panel, StatusBadge, PaymentBadge, EmptyState } from '@/src/components/common';
 import { useStore } from '@/src/lib/store';
 import { useNow } from '@/src/components/reports/ui';
+import { userBranchIds, branchName, peso, timeAgo, isToday, PAYMENT_LABEL } from '@/src/lib/logic';
+import { moduleOn } from '@/src/lib/platform';
+import type { Order, OrderStatus } from '@/src/lib/types';
 import {
-  userBranchIds, branchName, pesoShort, peso, timeAgo, isToday, STATUS_LABEL, PAYMENT_LABEL,
-} from '@/src/lib/logic';
-import type { OrderStatus } from '@/src/lib/types';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/src/components/ui/shadcn/table';
-import {
-  BLUE, CHART_COLORS, DAY, dayKey, dayLabel, groupBy, isDelayed, isSale, itemQty, lineTotal, lowStockList, netSales, startOfDay, sum,
+  DAY, dayKey, groupBy, isDelayed, isSale, itemQty, lineTotal, lowStockList, netSales, startOfDay, sum,
 } from '@/src/components/reports/analytics';
-import { cn } from '@/src/lib/utils';
 import { ProductImage } from '@/src/components/ProductImage';
+import { cn } from '@/src/lib/utils';
 
-const ic = (C: typeof ShoppingBag) => <C className="w-5 h-5" strokeWidth={1.75} />;
-const STATUS_ORDER: OrderStatus[] = ['awaiting_confirmation', 'confirmed', 'preparing', 'awaiting_shopper', 'ready', 'out_for_delivery', 'delivered', 'collected', 'cancelled', 'failed_delivery'];
-const STATUS_COLOR: Partial<Record<OrderStatus, string>> = {
-  awaiting_confirmation: '#dc2626', confirmed: '#c8151d', preparing: '#9333ea', awaiting_shopper: '#f59e0b', ready: '#0891b2',
-  out_for_delivery: '#4f46e5', delivered: '#16a34a', collected: '#22c55e', cancelled: '#9ca3af', failed_delivery: '#ea580c',
+// Jovanne's Meat Shop dashboard — matches the approved desktop + phone designs.
+const display = { fontFamily: 'var(--font-oswald)' } as const;
+const pesoWhole = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`;
+
+const STAGES: { key: string; label: string; color: string; match: (o: Order) => boolean }[] = [
+  { key: 'awaiting', label: 'Awaiting', color: '#d6202a', match: (o) => o.status === 'awaiting_confirmation' || o.status === 'placed' },
+  { key: 'confirmed', label: 'Confirmed', color: '#d9822b', match: (o) => o.status === 'confirmed' },
+  { key: 'preparing', label: 'Preparing', color: '#8b2f6e', match: (o) => o.status === 'preparing' || o.status === 'awaiting_shopper' },
+  { key: 'ready', label: 'Ready', color: '#1f6f6a', match: (o) => o.status === 'ready' },
+  { key: 'out', label: 'Out for delivery', color: '#2c4f9e', match: (o) => o.status === 'out_for_delivery' },
+  { key: 'delivered', label: 'Delivered', color: '#2e6b3a', match: (o) => o.status === 'delivered' },
+  { key: 'collected', label: 'Collected', color: '#5aa469', match: (o) => o.status === 'collected' },
+  { key: 'cancelled', label: 'Cancelled', color: '#b5aca8', match: (o) => o.status === 'cancelled' || o.status === 'failed_delivery' },
+];
+
+const CAT_COLOR: Record<string, string> = { Pork: '#a8612e', Beef: '#c8151d', Chicken: '#e0a33a', 'Processed Meats': '#8b2f6e', Seafood: '#1f6f6a', Groceries: '#b5aca8' };
+const CAT_SHORT: Record<string, string> = { 'Processed Meats': 'Processed' };
+const PAY_COLOR: Record<string, string> = { gcash: '#2c4f9e', cod: '#2a2322', card: '#a8612e', pay_at_pickup: '#cfc4bd', maya: '#2e6b3a', cash: '#7a6e6a' };
+
+const STATUS_PILL: Partial<Record<OrderStatus, { label: string; cls: string }>> = {
+  awaiting_confirmation: { label: 'Awaiting confirmation', cls: 'bg-red-50 text-[#c8151d]' },
+  placed: { label: 'Placed', cls: 'bg-red-50 text-[#c8151d]' },
+  confirmed: { label: 'Confirmed', cls: 'bg-orange-50 text-[#b4651c]' },
+  preparing: { label: 'Preparing', cls: 'bg-fuchsia-50 text-[#8b2f6e]' },
+  awaiting_shopper: { label: 'Calling customer', cls: 'bg-fuchsia-50 text-[#8b2f6e]' },
+  ready: { label: 'Ready', cls: 'bg-teal-50 text-[#1f6f6a]' },
+  out_for_delivery: { label: 'Out for delivery', cls: 'bg-blue-50 text-[#2c4f9e]' },
+  delivered: { label: 'Delivered', cls: 'bg-green-50 text-[#2e6b3a]' },
+  collected: { label: 'Collected', cls: 'bg-green-50 text-[#2e6b3a]' },
+  cancelled: { label: 'Cancelled', cls: 'bg-stone-100 text-stone-500' },
+  failed_delivery: { label: 'Failed delivery', cls: 'bg-orange-50 text-orange-700' },
 };
+
+type Tab = 'all' | 'action' | 'delivery' | 'pickup';
 
 export default function DashboardPage() {
   const s = useStore();
-  const now = useNow(5000);
-  // One meat shop branch (Digos). If more branches are added later, the numbers cover every branch the user can see.
+  const now = useNow(1000);
   const branchIds = userBranchIds(s);
   const scopeLabel = branchIds.length === 1 ? `${branchName(s, branchIds[0])} branch` : `${branchIds.length} branches`;
 
-  const data = (() => {
-    const orders = s.orders.filter((o) => branchIds.includes(o.branchId));
-    const today = orders.filter((o) => isToday(o.placedAt));
-    const awaiting = orders.filter((o) => o.status === 'awaiting_confirmation');
-    const waitingRider = orders.filter((o) => o.fulfillment === 'delivery' && !o.riderId && ['confirmed', 'preparing', 'ready'].includes(o.status));
-    const ridersOnline = s.riders.filter((r) => r.status === 'online' && r.branchIds.some((b) => branchIds.includes(b)));
-    const low = lowStockList(s, branchIds);
-    const delayed = orders.filter((o) => isDelayed(s, o, now));
+  // "Live · updated Ns ago": the time the shared data last changed.
+  const lastChange = useRef(0);
+  const [changedAt, setChangedAt] = useState(0);
+  useEffect(() => {
+    lastChange.current = Date.now();
+    const t = setTimeout(() => setChangedAt(lastChange.current), 0);
+    return () => clearTimeout(t);
+  }, [s]);
+  const updatedAgo = changedAt ? Math.max(0, Math.round((now - changedAt) / 1000)) : 0;
 
-    const byStatus = STATUS_ORDER.map((st) => ({ status: STATUS_LABEL[st], key: st, count: today.filter((o) => o.status === st).length })).filter((x) => x.count > 0);
+  const [tab, setTab] = useState<Tab>('all');
 
-    const days = Array.from({ length: 14 }, (_, i) => startOfDay(13 - i));
-    const byDay = groupBy(orders.filter((o) => new Date(o.placedAt).getTime() >= days[0].getTime()), (o) => dayKey(o.placedAt));
-    const trend = days.map((d) => {
-      const list = byDay.get(dayKey(d)) ?? [];
-      return { day: dayLabel(d), sales: Math.round(sum(list, netSales)), orders: list.filter(isSale).length };
-    });
+  const orders = s.orders.filter((o) => branchIds.includes(o.branchId));
+  const today = orders.filter((o) => isToday(o.placedAt));
+  const awaiting = orders.filter((o) => o.status === 'awaiting_confirmation');
+  const waitingRider = orders.filter((o) => o.fulfillment === 'delivery' && !o.riderId && ['confirmed', 'preparing', 'ready'].includes(o.status));
+  const delayed = orders.filter((o) => isDelayed(s, o, now));
+  const low = lowStockList(s, branchIds);
+  const ridersOnline = s.riders.filter((r) => r.status === 'online' && r.branchIds.some((b) => branchIds.includes(b)));
+  const coldOut = orders.filter((o) => o.coldChain && o.status === 'out_for_delivery');
+  const salesToday = sum(today, netSales);
+  const cancelledToday = today.filter((o) => o.status === 'cancelled').length;
 
-    const last14 = orders.filter((o) => new Date(o.placedAt).getTime() >= now - 14 * DAY && isSale(o));
-    const pie = (key: (o: (typeof orders)[number]) => string, label: (k: string) => string) =>
-      [...groupBy(last14, key)].map(([k, list]) => ({ name: label(k), value: Math.round(sum(list, netSales)) })).sort((a, b) => b.value - a.value);
-    const coldOut = orders.filter((o) => o.coldChain && o.status === 'out_for_delivery');
+  // Orders by stage (today)
+  const stages = STAGES.map((st) => ({ ...st, count: today.filter(st.match).length }));
+  const stageTotal = Math.max(1, stages.reduce((a, b) => a + b.count, 0));
 
-    // Sales by meat category and top sellers (kg for weighed items), from order lines.
-    const catOf = (pid: string) => {
-      const p = s.products.find((x) => x.id === pid);
-      return s.categories.find((x) => x.id === p?.categoryId)?.name ?? 'Other';
-    };
-    const catTotals = new Map<string, number>();
-    const prodTotals = new Map<string, { name: string; image: string; sales: number; qty: number; byWeight: boolean; lines: number }>();
-    for (const o of last14) {
-      for (const i of o.items) {
-        if (i.pickStatus === 'removed' || i.pickStatus === 'out_of_stock') continue;
-        const amt = lineTotal(i);
-        const cat = catOf(i.productId);
-        catTotals.set(cat, (catTotals.get(cat) ?? 0) + amt);
-        const cur = prodTotals.get(i.productId) ?? { name: i.name, image: i.image, sales: 0, qty: 0, byWeight: i.soldByWeight, lines: 0 };
-        cur.sales += amt;
-        cur.qty += itemQty(i);
-        cur.lines += 1;
-        prodTotals.set(i.productId, cur);
-      }
+  // Sales — last 14 days (13 past days + today)
+  const days = Array.from({ length: 14 }, (_, i) => startOfDay(13 - i));
+  const byDay = groupBy(orders.filter((o) => new Date(o.placedAt).getTime() >= days[0].getTime()), (o) => dayKey(o.placedAt));
+  const trend = days.map((d, i) => ({ day: d.getDate(), today: i === 13, sales: Math.round(sum(byDay.get(dayKey(d)) ?? [], netSales)) }));
+  const trendTotal = trend.reduce((a, b) => a + b.sales, 0);
+  const step = 8000;
+  const yMax = Math.max(step, Math.ceil(Math.max(...trend.map((t) => t.sales)) / step) * step);
+  const ticks = Array.from({ length: yMax / step + 1 }, (_, i) => yMax - i * step);
+
+  // Sales mix + top sellers (last 14 days)
+  const last14 = orders.filter((o) => new Date(o.placedAt).getTime() >= now - 14 * DAY && isSale(o));
+  const product = (id: string) => s.products.find((p) => p.id === id);
+  const catName = (pid: string) => s.categories.find((c) => c.id === product(pid)?.categoryId)?.name ?? 'Other';
+  const catTotals = new Map<string, number>();
+  const prod = new Map<string, { id: string; name: string; image: string; cat: string; sales: number; qty: number; byWeight: boolean; orders: Set<string> }>();
+  for (const o of last14) {
+    for (const i of o.items) {
+      if (i.pickStatus === 'removed' || i.pickStatus === 'out_of_stock') continue;
+      const amt = lineTotal(i);
+      const cat = catName(i.productId);
+      catTotals.set(cat, (catTotals.get(cat) ?? 0) + amt);
+      const cur = prod.get(i.productId) ?? { id: i.productId, name: i.name, image: product(i.productId)?.image ?? i.image, cat, sales: 0, qty: 0, byWeight: i.soldByWeight, orders: new Set<string>() };
+      cur.sales += amt;
+      cur.qty += itemQty(i);
+      cur.orders.add(o.id);
+      prod.set(i.productId, cur);
     }
-    const byCategory = [...catTotals].map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value);
-    const topProducts = [...prodTotals.values()].sort((a, b) => b.sales - a.sales).slice(0, 8);
-    const byFulfillment = pie((o) => o.fulfillment, (k) => (k === 'delivery' ? 'Delivery' : 'Pickup'));
-    const byPayment = pie((o) => o.paymentMethod, (k) => PAYMENT_LABEL[k as keyof typeof PAYMENT_LABEL]);
+  }
+  const share = (entries: [string, number][]) => {
+    const total = entries.reduce((a, [, v]) => a + v, 0) || 1;
+    return entries.sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ key: k, value: v, pct: Math.round((v / total) * 100) }));
+  };
+  const mixCategory = share([...catTotals]);
+  const mixFulfillment = share([...groupBy(last14, (o) => o.fulfillment)].map(([k, l]) => [k, sum(l, netSales)] as [string, number]));
+  const mixPayment = share([...groupBy(last14, (o) => o.paymentMethod)].map(([k, l]) => [k, sum(l, netSales)] as [string, number]));
+  const top = [...prod.values()].sort((a, b) => b.sales - a.sales).slice(0, 8);
+  const topMax = Math.max(1, ...top.map((t) => t.sales));
 
-    return {
-      today, awaiting, waitingRider, ridersOnline, low, delayed, byStatus, trend, byCategory, byFulfillment, byPayment, topProducts, coldOut,
-      salesToday: sum(today, netSales),
-      recent: [...orders].sort((a, b) => b.placedAt.localeCompare(a.placedAt)).slice(0, 8),
-    };
-  })();
+  // Recent orders
+  const recentAll = [...orders].sort((a, b) => b.placedAt.localeCompare(a.placedAt)).slice(0, 8);
+  const needsAction = (o: Order) => o.status === 'awaiting_confirmation' || (o.fulfillment === 'delivery' && !o.riderId && o.status === 'ready');
+  const tabs: { key: Tab; label: string; list: Order[] }[] = [
+    { key: 'all', label: 'All', list: recentAll },
+    { key: 'action', label: 'Needs action', list: recentAll.filter(needsAction) },
+    { key: 'delivery', label: 'Delivery', list: recentAll.filter((o) => o.fulfillment === 'delivery') },
+    { key: 'pickup', label: 'Pickup', list: recentAll.filter((o) => o.fulfillment === 'pickup') },
+  ];
+  const recent = tabs.find((t) => t.key === tab)!.list;
 
-  const maxSales = Math.max(1, ...data.topProducts.map((r) => r.sales));
+  const queues = [
+    { n: awaiting.length, title: 'Awaiting confirmation', sub: awaiting.length ? `Oldest placed ${timeAgo([...awaiting].sort((a, b) => a.placedAt.localeCompare(b.placedAt))[0].placedAt)}` : 'All caught up', cta: 'Review', href: '/orders', tone: 'bg-[#fdeeee] text-[#c8151d]', btn: 'text-[#c8151d] border-red-200' },
+    { n: waitingRider.length, title: 'Waiting for a rider', sub: 'Delivery orders, no rider yet', cta: 'Assign', href: '/delivery/dispatch', tone: 'bg-[#fbf1e3] text-[#8a4b12]', btn: 'text-[#8a4b12] border-amber-200' },
+    { n: delayed.length, title: 'Delayed order', sub: 'Past confirm / prep target', cta: 'View', href: '/orders', tone: 'bg-[#f8eef4] text-[#8b2f6e]', btn: 'text-[#8b2f6e] border-fuchsia-200' },
+    { n: low.length, title: 'Low-stock products', sub: 'At or below reorder point', cta: 'Restock', href: '/inventory', tone: 'bg-[#f2ede9] text-[#2a2322]', btn: 'text-[#2a2322] border-stone-300' },
+  ];
+  const queueTotal = queues.reduce((a, q) => a + q.n, 0);
+  const dateLine = new Date(now).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <DashboardLayout title="Dashboard" eyebrow="Overview">
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Today at the meat shop</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {scopeLabel} · updates every 5 seconds · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
-        </div>
-        {data.coldOut.length > 0 && (
-          <Link href="/orders" className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800">
-            🧊 {data.coldOut.length} cold-chain order{data.coldOut.length === 1 ? '' : 's'} on the road
-          </Link>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 sm:gap-4 mb-6">
-        <StatCard title="Orders today" value={data.today.length} sub={`${data.today.filter((o) => o.status === 'cancelled').length} cancelled`} icon={ic(ShoppingBag)} href="/orders" />
-        <StatCard title="Sales today" value={pesoShort(data.salesToday)} sub="net of refunds" icon={ic(Wallet)} accent="border-l-[#16a34a]" />
-        <StatCard
-          title="Awaiting confirmation" value={data.awaiting.length} icon={ic(BellRing)} href="/orders"
-          accent={data.awaiting.length ? 'border-l-[#dc2626]' : 'border-l-gray-300'} valueClass={data.awaiting.length ? 'text-[#dc2626]' : 'text-gray-400'}
-          sub={data.awaiting.length ? `oldest ${timeAgo(data.awaiting.map((o) => o.placedAt).sort()[0])}` : 'all caught up'}
-        />
-        <StatCard title="Waiting for rider" value={data.waitingRider.length} icon={ic(Bike)} accent="border-l-[#f59e0b]" href="/delivery/dispatch" sub="delivery orders, no rider" />
-        <StatCard title="Active riders online" value={data.ridersOnline.length} icon={ic(Users)} accent="border-l-[#0891b2]" sub="own riders" />
-        <StatCard title="Low-stock alerts" value={data.low.length} icon={ic(PackageX)} accent="border-l-[#9333ea]" href="/inventory" sub="at or below threshold" />
-        <StatCard
-          title="Delayed orders" value={data.delayed.length} icon={ic(Clock)} href="/orders"
-          accent={data.delayed.length ? 'border-l-[#ea580c]' : 'border-l-gray-300'} valueClass={data.delayed.length ? 'text-[#ea580c]' : 'text-gray-400'}
-          sub="past confirm / prep target"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6 mb-6">
-        <Panel title="Sales — last 14 days" className="xl:col-span-2" action={<span className="text-xs text-gray-400">net sales, ₱</span>}>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.trend} margin={{ left: 8, right: 8, top: 8 }}>
-                <defs>
-                  <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={BLUE} stopOpacity={0.25} />
-                    <stop offset="100%" stopColor={BLUE} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} tickLine={false} axisLine={false} tickFormatter={(v) => `₱${Math.round(v / 1000)}k`} width={48} />
-                <Tooltip formatter={(v, n) => (n === 'sales' ? [peso(Number(v)), 'Sales'] : [v, 'Orders'])} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                <Area type="monotone" dataKey="sales" stroke={BLUE} strokeWidth={2} fill="url(#salesFill)" />
-              </AreaChart>
-            </ResponsiveContainer>
+      <div className="space-y-5 md:space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs md:text-sm font-semibold uppercase tracking-[0.12em] text-[#ae754d]">{dateLine} · {scopeLabel}</p>
+            <h1 className="mt-1 text-4xl md:text-5xl font-bold uppercase leading-none text-[#1d1716]" style={display}>Today at the shop</h1>
           </div>
-        </Panel>
-        <Panel title="Orders today by status">
-          {data.byStatus.length === 0 ? (
-            <EmptyState title="No orders yet today" />
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.byStatus} layout="vertical" margin={{ left: 0, right: 16 }}>
-                  <XAxis type="number" allowDecimals={false} hide />
-                  <YAxis type="category" dataKey="status" width={120} tick={{ fontSize: 11, fill: '#4b5563' }} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 11, fill: '#374151' }}>
-                    {data.byStatus.map((d) => <Cell key={d.key} fill={STATUS_COLOR[d.key] ?? BLUE} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-2 h-10 px-4 rounded-full bg-white border border-[#eadfd6] text-sm text-gray-700">
+              <span className="w-2 h-2 rounded-full bg-green-500 ring-4 ring-green-100" /> Live · updated {updatedAgo}s ago
+            </span>
+            {coldOut.length > 0 && (
+              <Link href="/delivery/dispatch" className="inline-flex items-center gap-2 h-10 px-4 rounded-full bg-sky-50 border border-sky-100 text-sm font-medium text-[#1f5f78]">
+                <Snowflake className="w-4 h-4" /> {coldOut.length} cold-chain order{coldOut.length === 1 ? '' : 's'} on the road
+              </Link>
+            )}
+            {moduleOn(s, 'walkin') && (
+              <Link href="/orders/new" className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-[#d6202a] hover:bg-[#c8151d] text-white text-sm font-semibold shadow-sm">
+                <Plus className="w-4 h-4" /> New order
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* Sales today + Needs your attention */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] gap-4 md:gap-5">
+          <div className="rounded-2xl bg-[#2a2322] border-4 border-[#1d1716] p-5 md:p-6 text-white shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <p className="uppercase tracking-[0.15em] text-sm text-[#e0b38c]" style={display}>Sales today</p>
+              <p className="text-xs text-white/70">net of refunds</p>
+            </div>
+            <p className="mt-3 text-6xl md:text-7xl font-bold text-[#ec1b26] leading-none tabular-nums" style={display}>{pesoWhole(salesToday)}</p>
+            <div className="mt-6 grid grid-cols-2 border-t border-white/10 pt-4">
+              <div className="pr-4 border-r border-white/10">
+                <p className="text-sm text-white/80">Orders today</p>
+                <p className="mt-1 flex items-baseline gap-2"><span className="text-4xl font-bold" style={display}>{today.length}</span><span className="text-xs text-white/60">{cancelledToday} cancelled</span></p>
+              </div>
+              <div className="pl-4">
+                <p className="text-sm text-white/80">Riders online</p>
+                <p className="mt-1 flex items-baseline gap-2"><span className="text-4xl font-bold" style={display}>{ridersOnline.length}</span><span className="text-xs text-white/60">own riders</span></p>
+              </div>
+            </div>
+          </div>
+
+          <section className="rounded-2xl bg-[#fffdfb] border border-[#eadfd6] p-4 md:p-5">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h2 className="text-2xl md:text-[26px] font-medium leading-tight text-[#1d1716]" style={display}>Needs your attention</h2>
+              <p className="text-sm text-gray-500 text-right mt-1">{queueTotal} items across 4 queues</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {queues.map((q) => (
+                <div key={q.title} className={cn('rounded-xl p-4 flex items-center gap-4', q.tone.split(' ')[0])}>
+                  <span className={cn('text-5xl font-bold w-10 text-center shrink-0', q.tone.split(' ')[1])} style={display}>{q.n}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-[#1d1716] leading-snug">{q.title}</p>
+                    <p className="text-sm text-gray-500 leading-snug">{q.sub}</p>
+                  </div>
+                  <Link href={q.href} className={cn('shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-lg bg-white border text-sm font-semibold hover:shadow-sm', q.btn)}>
+                    {q.cta} <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {/* Orders by stage */}
+        <section className="rounded-2xl bg-[#fffdfb] border border-[#eadfd6] p-4 md:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-4">
+            <h2 className="text-2xl md:text-[26px] font-medium text-[#1d1716]" style={display}>Today&apos;s orders by stage</h2>
+            <Link href="/orders" className="text-sm font-medium text-[#c8151d] hover:underline inline-flex items-center gap-1.5">Open order board <ArrowRight className="w-4 h-4" /></Link>
+          </div>
+          <div className="flex gap-1 h-2.5 rounded-full overflow-hidden">
+            {stages.map((st) => (
+              <span key={st.key} className="h-full first:rounded-l-full last:rounded-r-full" style={{ background: st.color, flexGrow: Math.max(st.count, 0.35) / stageTotal }} />
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-4 lg:grid-cols-8 gap-x-2 gap-y-4 lg:gap-x-0">
+            {stages.map((st, i) => (
+              <div key={st.key} className={cn('min-w-0 pr-1 border-[#eadfd6]', i !== 0 && 'lg:pl-3 lg:border-l')}>
+                <p className="text-[13px] sm:text-sm text-gray-600 flex items-start gap-1.5 min-h-10 leading-tight break-words"><span className="mt-1 w-2 h-2 rounded-full shrink-0" style={{ background: st.color }} />{st.label}</p>
+                <p className="text-4xl font-bold text-[#1d1716]" style={display}>{st.count}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Sales last 14 days + Sales mix */}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-4 md:gap-5">
+          <section className="rounded-2xl bg-[#fffdfb] border border-[#eadfd6] p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+              <div>
+                <h2 className="text-2xl md:text-[26px] font-medium text-[#1d1716]" style={display}>Sales — last 14 days</h2>
+                <p className="text-sm text-gray-500">Net sales · <b className="text-[#1d1716]">{pesoWhole(trendTotal)}</b> total</p>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-gray-600">
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#4a3f3d]" /> Past days</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#d6202a]" /> Today, so far</span>
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <div className="flex flex-col justify-between text-right text-[11px] text-gray-400 h-56 md:h-64 pb-0 -mt-1.5 w-10 shrink-0">
+                {ticks.map((t) => <span key={t}>₱{t / 1000 === 0 ? '0' : `${t / 1000}k`}</span>)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="relative h-56 md:h-64 flex items-end gap-1.5 md:gap-3 border-b border-[#eadfd6]">
+                  {ticks.slice(0, -1).map((t) => <span key={t} className="absolute inset-x-0 border-t border-dashed border-[#eee5de]" style={{ bottom: `${(t / yMax) * 100}%` }} aria-hidden />)}
+                  {trend.map((d) => (
+                    <div key={d.day} className="relative flex-1 h-full flex items-end" title={`${d.today ? 'Today' : `Day ${d.day}`}: ${peso(d.sales)}`}>
+                      <div className="w-full rounded-t-[4px]" style={{
+                        height: `${Math.max(1, (d.sales / yMax) * 100)}%`,
+                        background: d.today ? 'repeating-linear-gradient(135deg,#d6202a 0 6px,#ec5a60 6px 9px)' : '#4a3f3d',
+                      }} />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-1.5 md:gap-3 mt-2">
+                  {trend.map((d, i) => (
+                    <span key={d.day} className={cn('flex-1 text-center text-[11px]', d.today ? 'font-semibold text-[#c8151d]' : 'text-gray-500', !d.today && i % 2 === 1 && 'invisible sm:visible')}>
+                      {d.today ? <><span className="hidden sm:inline">Today</span><span className="sm:hidden">{d.day}</span></> : d.day}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl bg-[#fffdfb] border border-[#eadfd6] p-4 md:p-6">
+            <div className="flex items-start justify-between gap-2">
+              <h2 className="text-2xl md:text-[26px] font-medium text-[#1d1716]" style={display}>Sales mix</h2>
+              <span className="text-sm text-gray-500 mt-1">14 days</span>
+            </div>
+            <Mix title="By category" rows={mixCategory.map((m) => ({ label: CAT_SHORT[m.key] ?? m.key, pct: m.pct, color: CAT_COLOR[m.key] ?? '#b5aca8' }))} />
+            <Mix title="By fulfillment" rows={mixFulfillment.map((m) => ({ label: m.key === 'delivery' ? 'Delivery' : 'Pickup', pct: m.pct, color: m.key === 'delivery' ? '#2a2322' : '#cfc4bd' }))} />
+            <Mix title="By payment" rows={mixPayment.map((m) => ({ label: PAYMENT_LABEL[m.key as keyof typeof PAYMENT_LABEL] ?? m.key, pct: m.pct, color: PAY_COLOR[m.key] ?? '#b5aca8' }))} />
+          </section>
+        </div>
+
+        {/* Top sellers + Low stock */}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-4 md:gap-5 items-start">
+          <section className="rounded-2xl bg-[#fffdfb] border border-[#eadfd6] overflow-hidden">
+            <div className="flex items-start justify-between gap-2 p-4 md:px-6 md:pt-6 md:pb-4">
+              <h2 className="text-2xl md:text-[26px] font-medium text-[#1d1716]" style={display}>Top sellers</h2>
+              <span className="text-sm text-gray-500 mt-1">Last 14 days · by sales</span>
+            </div>
+            {/* desktop / tablet table */}
+            <table className="hidden md:table w-full text-sm">
+              <thead>
+                <tr className="bg-[#f6f0eb] text-[11px] uppercase tracking-wider text-gray-500">
+                  <th className="text-left font-semibold py-2.5 pl-6 w-10">#</th>
+                  <th className="text-left font-semibold py-2.5">Product</th>
+                  <th className="text-right font-semibold py-2.5">Sold</th>
+                  <th className="text-right font-semibold py-2.5">Orders</th>
+                  <th className="text-right font-semibold py-2.5 pr-6">Sales</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#f0e8e2]">
+                {top.map((t, i) => (
+                  <tr key={t.id}>
+                    <td className={cn('pl-6 py-3 text-xl font-bold', i === 0 ? 'text-[#c8151d]' : 'text-gray-400')} style={display}>{i + 1}</td>
+                    <td className="py-3">
+                      <div className="flex items-center gap-3">
+                        <Thumb image={t.image} />
+                        <div className="min-w-0 flex-1 max-w-[260px]">
+                          <p className="font-semibold text-[#1d1716] truncate">{t.name} <span className="text-xs font-normal text-gray-400">{CAT_SHORT[t.cat] ?? t.cat}</span></p>
+                          <Bar pct={(t.sales / topMax) * 100} color={i === 0 ? '#d6202a' : '#3b3130'} />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 text-right tabular-nums">{t.byWeight ? `${t.qty.toFixed(1)} kg` : `${t.qty} pcs`}</td>
+                    <td className="py-3 text-right tabular-nums text-gray-600">{t.orders.size}</td>
+                    <td className="py-3 pr-6 text-right font-bold tabular-nums">{pesoWhole(t.sales)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {/* phone list */}
+            <ul className="md:hidden divide-y divide-[#f0e8e2] border-t border-[#f0e8e2]">
+              {top.map((t, i) => (
+                <li key={t.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className={cn('w-5 text-xl font-bold shrink-0', i === 0 ? 'text-[#c8151d]' : 'text-gray-400')} style={display}>{i + 1}</span>
+                  <Thumb image={t.image} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="font-semibold text-[#1d1716] truncate">{t.name}</p>
+                      <p className="font-bold tabular-nums shrink-0">{pesoWhole(t.sales)}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <Bar pct={(t.sales / topMax) * 100} color={i === 0 ? '#d6202a' : '#3b3130'} className="flex-1 max-w-[150px]" />
+                      <p className="text-xs text-gray-500 shrink-0">{t.byWeight ? `${t.qty.toFixed(1)} kg` : `${t.qty} pcs`} · {t.orders.size} orders</p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="rounded-2xl bg-[#fffdfb] border border-[#eadfd6] p-4 md:p-6">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <h2 className="text-2xl md:text-[26px] font-medium text-[#1d1716]" style={display}>Low stock</h2>
+              <Link href="/inventory" className="text-sm font-medium text-[#c8151d] hover:underline inline-flex items-center gap-1.5 mt-1">Inventory <ArrowRight className="w-4 h-4" /></Link>
+            </div>
+            {low.length === 0 ? (
+              <p className="text-sm text-gray-500 py-6 text-center">Every product is above its reorder point.</p>
+            ) : (
+              <ul className="divide-y divide-[#f0e8e2]">
+                {low.slice(0, 6).map((r) => {
+                  const pct = Math.min(100, (Math.max(0, r.onHand) / Math.max(1, r.threshold)) * 100);
+                  const out = r.onHand <= 0;
+                  return (
+                    <li key={`${r.productId}-${r.branchId}`} className="flex items-center gap-3 py-3">
+                      <Thumb image={r.image} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="font-semibold text-[#1d1716] truncate">{r.name}</p>
+                          <p className={cn('text-sm font-semibold shrink-0', out ? 'text-[#c8151d]' : pct < 50 ? 'text-[#b4510f]' : 'text-[#8a6a10]')}>{out ? 'Out of stock' : `${r.onHand} left`}</p>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <Bar pct={Math.max(pct, out ? 4 : 0)} color={out ? '#c8151d' : pct < 50 ? '#b4510f' : '#8a6a10'} className="flex-1" />
+                          <p className="text-xs text-gray-400 shrink-0">reorder at {r.threshold}</p>
+                        </div>
+                      </div>
+                      <Link href="/inventory" className="shrink-0 h-11 px-4 rounded-lg border border-[#e3d6cc] bg-white text-sm font-semibold text-[#1d1716] inline-flex items-center hover:bg-[#faf6f2]">Reorder</Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        {/* Recent orders */}
+        <section className="rounded-2xl bg-[#fffdfb] border border-[#eadfd6] overflow-hidden">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 md:px-6 md:pt-6 md:pb-4">
+            <h2 className="text-2xl md:text-[26px] font-medium text-[#1d1716]" style={display}>Recent orders</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 min-w-0">
+              <div className="flex gap-1 rounded-xl bg-[#f3ece6] p-1 overflow-x-auto max-w-full">
+                {tabs.map((t) => (
+                  <button key={t.key} onClick={() => setTab(t.key)}
+                    className={cn('h-9 px-3.5 rounded-lg text-sm whitespace-nowrap', tab === t.key ? 'bg-white shadow-sm font-semibold text-[#1d1716]' : 'text-gray-600 hover:text-[#1d1716]')}>
+                    {t.label} <span className="text-gray-400 ml-0.5">{t.list.length}</span>
+                  </button>
+                ))}
+              </div>
+              <Link href="/orders" className="text-sm font-medium text-[#c8151d] hover:underline inline-flex items-center gap-1.5 shrink-0">All orders <ArrowRight className="w-4 h-4" /></Link>
+            </div>
+          </div>
+
+          {recent.length === 0 && <p className="text-sm text-gray-500 py-8 text-center border-t border-[#f0e8e2]">No orders here right now.</p>}
+
+          {/* desktop / tablet table */}
+          {recent.length > 0 && (
+            <div className="hidden lg:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#f6f0eb] text-[11px] uppercase tracking-wider text-gray-500">
+                    <th className="text-left font-semibold py-2.5 pl-6">Order</th>
+                    <th className="text-left font-semibold py-2.5">Customer</th>
+                    <th className="text-left font-semibold py-2.5">Fulfillment</th>
+                    <th className="text-left font-semibold py-2.5">Status</th>
+                    <th className="text-left font-semibold py-2.5">Payment</th>
+                    <th className="text-right font-semibold py-2.5">Total</th>
+                    <th className="text-right font-semibold py-2.5 pr-6">Placed</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f0e8e2]">
+                  {recent.map((o) => (
+                    <tr key={o.id} className="hover:bg-[#fbf7f3] cursor-pointer" onClick={() => (window.location.href = `/orders/${o.id}`)}>
+                      <td className="py-3.5 pl-6"><Link href={`/orders/${o.id}`} className="font-bold text-[#c8151d] hover:underline">{o.number}</Link></td>
+                      <td className="py-3.5 text-[#1d1716]">{o.customerName}</td>
+                      <td className="py-3.5"><span className="inline-flex items-center gap-2"><FulfillIcon f={o.fulfillment} /> <span className="capitalize text-gray-700">{o.fulfillment}</span> {o.coldChain && <ColdPill />}</span></td>
+                      <td className="py-3.5"><StatusPill status={o.status} /></td>
+                      <td className="py-3.5"><PayStatus paid={o.paymentStatus === 'paid'} refunded={o.paymentStatus === 'refunded'} /></td>
+                      <td className="py-3.5 text-right font-bold tabular-nums">{peso(o.total)}</td>
+                      <td className="py-3.5 pr-6 text-right text-gray-500 whitespace-nowrap">{timeAgo(o.placedAt)} <ChevronRight className="inline w-4 h-4 text-gray-300" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-        </Panel>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-6">
-        <Donut title="Sales by category" data={data.byCategory} />
-        <Donut title="Sales by fulfillment" data={data.byFulfillment} />
-        <Donut title="Sales by payment method" data={data.byPayment} />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6 mb-6">
-        <Panel title={<div className="flex items-center gap-2"><Trophy className="w-4 h-4 text-amber-500" strokeWidth={1.75} /><h2 className="text-base font-semibold text-gray-900">Top sellers · last 14 days</h2></div>} className="xl:col-span-2" bodyClass="p-0">
-          {data.topProducts.length === 0 ? (
-            <EmptyState title="No sales in range" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4 sm:pl-5 w-10">#</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="text-right">Sold</TableHead>
-                  <TableHead className="text-right">Order lines</TableHead>
-                  <TableHead className="text-right pr-4 sm:pr-5">Sales</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.topProducts.map((r, i) => (
-                  <TableRow key={r.name}>
-                    <TableCell className="pl-4 sm:pl-5 font-semibold text-gray-400">{i + 1}</TableCell>
-                    <TableCell>
-                      <div className="font-medium text-gray-900 whitespace-nowrap"><ProductImage image={r.image} /> {r.name}</div>
-                      <div className="h-1.5 mt-1 rounded-full bg-gray-100 w-32 sm:w-40">
-                        <div className="h-1.5 rounded-full bg-[#c8151d]" style={{ width: `${(r.sales / maxSales) * 100}%` }} />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">{r.byWeight ? `${r.qty.toFixed(1)} kg` : `${r.qty} pcs`}</TableCell>
-                    <TableCell className="text-right">{r.lines}</TableCell>
-                    <TableCell className="text-right pr-4 sm:pr-5 font-semibold text-[#c8151d]">{pesoShort(r.sales)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </Panel>
-        <Panel title="Low-stock alerts" action={<Link href="/inventory" className="text-xs font-medium text-[#c8151d] hover:underline inline-flex items-center gap-1">Inventory <ArrowRight className="w-3 h-3" /></Link>} bodyClass="p-0">
-          {data.low.length === 0 ? (
-            <EmptyState title="No low-stock items" sub="Every product is above its threshold" />
-          ) : (
-            <ul className="divide-y divide-gray-100 max-h-[360px] overflow-y-auto">
-              {data.low.slice(0, 12).map((r) => (
-                <li key={`${r.productId}-${r.branchId}`}>
-                  <Link href="/inventory" className="flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-gray-50">
-                    <span className="text-xl"><ProductImage image={r.image} /></span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">{r.name}</p>
-                      <p className="text-xs text-gray-400">reorder at {r.threshold}</p>
+          {/* phone / tablet cards */}
+          {recent.length > 0 && (
+            <ul className="lg:hidden divide-y divide-[#f0e8e2] border-t border-[#f0e8e2]">
+              {recent.map((o) => (
+                <li key={o.id}>
+                  <Link href={`/orders/${o.id}`} className="block px-4 py-3.5 hover:bg-[#fbf7f3]">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="min-w-0"><span className="font-bold text-[#c8151d]">{o.number}</span> <span className="text-sm text-gray-500 ml-1">{timeAgo(o.placedAt)}</span></p>
+                      <p className="font-bold tabular-nums shrink-0">{peso(o.total)}</p>
                     </div>
-                    <span className={cn('text-sm font-semibold', r.onHand <= 0 ? 'text-[#dc2626]' : 'text-amber-600')}>{r.onHand <= 0 ? 'Out' : `${r.onHand} left`}</span>
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <p className="font-medium text-[#1d1716] truncate">{o.customerName}</p>
+                      <PayStatus paid={o.paymentStatus === 'paid'} refunded={o.paymentStatus === 'refunded'} />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      <StatusPill status={o.status} />
+                      <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-[#f3ece6] text-xs font-medium text-gray-700"><FulfillIcon f={o.fulfillment} small /> <span className="capitalize">{o.fulfillment}</span></span>
+                      {o.coldChain && <ColdPill />}
+                    </div>
                   </Link>
                 </li>
               ))}
             </ul>
           )}
-        </Panel>
+        </section>
       </div>
-
-      <Panel title="Recent orders" action={<Link href="/orders" className="text-xs font-medium text-[#c8151d] hover:underline inline-flex items-center gap-1">All orders <ArrowRight className="w-3 h-3" /></Link>} bodyClass="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="pl-4 sm:pl-5">Order</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Payment</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right pr-5">Placed</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.recent.map((o) => (
-              <TableRow key={o.id} className="cursor-pointer" onClick={() => (window.location.href = `/orders/${o.id}`)}>
-                <TableCell className="pl-4 sm:pl-5"><Link href={`/orders/${o.id}`} className="font-medium text-[#c8151d] hover:underline whitespace-nowrap">{o.number}</Link></TableCell>
-                <TableCell className="whitespace-nowrap">{o.customerName}</TableCell>
-                <TableCell className="text-gray-500 capitalize whitespace-nowrap">{o.fulfillment}{o.coldChain ? ' · 🧊 cold chain' : ''}</TableCell>
-                <TableCell><StatusBadge status={o.status} /></TableCell>
-                <TableCell><PaymentBadge status={o.paymentStatus} /></TableCell>
-                <TableCell className="text-right font-medium">{peso(o.total)}</TableCell>
-                <TableCell className="text-right pr-5 text-gray-500">{timeAgo(o.placedAt)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Panel>
     </DashboardLayout>
   );
 }
 
-function Donut({ title, data }: { title: string; data: { name: string; value: number }[] }) {
-  const total = data.reduce((a, b) => a + b.value, 0);
+function Mix({ title, rows }: { title: string; rows: { label: string; pct: number; color: string }[] }) {
   return (
-    <Panel title={title} action={<span className="text-xs text-gray-400">14 days</span>}>
-      {total === 0 ? (
-        <EmptyState title="No sales in range" />
-      ) : (
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={data} dataKey="value" nameKey="name" innerRadius={50} outerRadius={78} paddingAngle={2} stroke="none">
-                {data.map((d, i) => <Cell key={d.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-              </Pie>
-              <Tooltip formatter={(v) => [`${pesoShort(Number(v))} (${Math.round((Number(v) / total) * 100)}%)`, '']} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-    </Panel>
+    <div className="mt-5">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">{title}</p>
+      <div className="mt-2 flex gap-0.5 h-3 rounded-full overflow-hidden bg-[#f3ece6]">
+        {rows.map((r) => <span key={r.label} className="h-full" style={{ width: `${r.pct}%`, background: r.color }} title={`${r.label} ${r.pct}%`} />)}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center gap-2 text-sm min-w-0">
+            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: r.color }} />
+            <span className="truncate text-gray-700">{r.label}</span>
+            <span className="ml-auto font-semibold tabular-nums">{r.pct}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
+}
+
+function Bar({ pct, color, className }: { pct: number; color: string; className?: string }) {
+  return (
+    <div className={cn('h-1.5 mt-1.5 rounded-full bg-[#f0e8e2]', className)}>
+      <div className="h-1.5 rounded-full" style={{ width: `${Math.max(2, Math.min(100, pct))}%`, background: color }} />
+    </div>
+  );
+}
+
+function Thumb({ image }: { image: string }) {
+  return (
+    <span className="relative w-11 h-11 md:w-10 md:h-10 rounded-lg overflow-hidden shrink-0 bg-[#f8e7da] border border-[#eadfd6] flex items-center justify-center text-xl">
+      <ProductImage image={image} fill />
+    </span>
+  );
+}
+
+function StatusPill({ status }: { status: OrderStatus }) {
+  const p = STATUS_PILL[status] ?? { label: status, cls: 'bg-stone-100 text-stone-600' };
+  return <span className={cn('inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium whitespace-nowrap', p.cls)}><span className="w-1.5 h-1.5 rounded-full bg-current" />{p.label}</span>;
+}
+
+function ColdPill() {
+  return <span className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full bg-sky-50 text-xs font-medium text-[#1f5f78] whitespace-nowrap"><Snowflake className="w-3.5 h-3.5" /> Cold chain</span>;
+}
+
+function FulfillIcon({ f, small }: { f: 'delivery' | 'pickup'; small?: boolean }) {
+  const C = f === 'delivery' ? Truck : Store;
+  return <C className={cn(small ? 'w-3.5 h-3.5' : 'w-4 h-4', 'text-gray-500')} strokeWidth={1.75} />;
+}
+
+function PayStatus({ paid, refunded }: { paid: boolean; refunded: boolean }) {
+  if (refunded) return <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500">Refunded</span>;
+  return paid
+    ? <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[#2e6b3a]"><CheckCircle2 className="w-4 h-4" /> Paid</span>
+    : <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[#a0620f]"><Clock className="w-4 h-4" /> Pending</span>;
 }
