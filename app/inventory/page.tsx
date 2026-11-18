@@ -3,43 +3,48 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, ArrowLeftRight, Boxes, Camera, CheckCircle2, ClipboardCheck, Download, PackageCheck, PackageX, Plus, Search, ShieldAlert, Truck, Wallet, Trash2,
+  ArrowLeftRight, Camera, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList, Download, Info, Layers, List, Package, PackageCheck, Pencil, Plus, Search, ShieldAlert, Trash2, Truck, X,
 } from 'lucide-react';
 import { DashboardLayout } from '@/src/components/layout/DashboardLayout';
-import { AccessDenied, EmptyState, Panel, Pill, StatCard, Toolbar, inputClass, selectClass } from '@/src/components/common';
+import { AccessDenied, EmptyState, Panel, Pill, Toolbar, inputClass, selectClass } from '@/src/components/common';
 import { Button } from '@/src/components/ui/shadcn/button';
 import { Checkbox } from '@/src/components/ui/shadcn/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/src/components/ui/shadcn/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/src/components/ui/shadcn/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/src/components/ui/shadcn/tabs';
 import { addAudit, addNotification, currentUserName, mutate, uid, useStore } from '@/src/lib/store';
 import { branchName, can, exportCsv, fmtDateTime, getSetting, num, onHand, peso, pesoShort, stockSummary, timeAgo } from '@/src/lib/logic';
-import type { AppState, MovementType, Product, Receiving, Transfer } from '@/src/lib/types';
+import type { AppState, Category, MovementType, Product, Receiving, Transfer } from '@/src/lib/types';
 import {
-  Field, MOVEMENT_LABEL, MovementBadge, StateBadge, categoryPath, categoryTree, inCategory, stockState,
+  Field, MOVEMENT_LABEL, MovementBadge, StateBadge, categoryTree, inCategory, stockState, topCategories,
 } from '@/src/components/catalog/shared';
 import { cn } from '@/src/lib/utils';
 import { ProductImage } from '@/src/components/ProductImage';
+import { CatalogCard, ICON, OSWALD, OutlineButton, RedButton, stripes, urlParam } from '../catalog/_ui';
 
-const ICON = { strokeWidth: 1.75 };
+const CRUMBS = [{ label: 'Operations' }, { label: 'Inventory' }];
+/** Light restyle for the Receiving / Movements / Stock take / Transfers panels: same card look as the catalog pages. */
+const CARD = 'rounded-2xl border-[#eadfd6] bg-[#fffdfb] shadow-none';
+
+type TabKey = 'stock' | 'receiving' | 'movements' | 'stock-take' | 'transfers';
+const TABS: { key: TabKey; label: string; icon: typeof Layers }[] = [
+  { key: 'stock', label: 'Stock levels', icon: Layers },
+  { key: 'receiving', label: 'Receiving', icon: Truck },
+  { key: 'movements', label: 'Movements', icon: List },
+  { key: 'stock-take', label: 'Stock take', icon: ClipboardList },
+  { key: 'transfers', label: 'Transfers', icon: ArrowLeftRight },
+];
 
 export default function InventoryPage() {
   const s = useStore();
-  if (!can(s, 'inventory.view')) {
-    return (
-      <DashboardLayout title="Inventory" eyebrow="Stock Ledger">
-        <AccessDenied permission="inventory.view" />
-      </DashboardLayout>
-    );
-  }
   return (
-    <DashboardLayout title="Inventory" eyebrow="Stock Ledger">
-      <InventoryInner s={s} />
+    <DashboardLayout title="Inventory" crumbs={CRUMBS}>
+      {can(s, 'inventory.view') ? <InventoryInner s={s} /> : <AccessDenied permission="inventory.view" />}
     </DashboardLayout>
   );
 }
 
-type Level = { p: Product; onHand: number; reserved: number; buffer: number; available: number; state: 'ok' | 'low' | 'out'; value: number };
+type StockState = 'ok' | 'low' | 'out';
+type Level = { p: Product; top?: Category; onHand: number; reserved: number; buffer: number; available: number; state: StockState; value: number };
 
 function useLevels(s: AppState, branchId: string): Level[] {
   return useMemo(
@@ -48,63 +53,126 @@ function useLevels(s: AppState, branchId: string): Level[] {
         .filter((p) => p.status !== 'discontinued')
         .map((p) => {
           const st = stockSummary(s, p.id, branchId);
-          return { p, ...st, state: stockState(st.available, st.onHand, p.reorderPoint), value: Math.max(0, st.onHand) * p.costPrice };
+          return {
+            p, top: s.categories.find((c) => c.id === p.categoryId), ...st,
+            state: stockState(st.available, st.onHand, p.reorderPoint), value: Math.max(0, st.onHand) * p.costPrice,
+          };
         }),
     [s, branchId],
   );
 }
 
+// ---------------- Stock list filters (kept in the page so the header Export sees them) ----------------
+type Seg = 'all' | StockState;
+interface View { q: string; seg: Seg; cat: string; reservedOnly: boolean; page: number; size: number }
+const PAGE_SIZES = [10, 25, 50, 100];
+const SEGS: { key: Seg; label: string }[] = [{ key: 'all', label: 'All' }, { key: 'ok', label: 'In stock' }, { key: 'low', label: 'Low' }, { key: 'out', label: 'Out' }];
+
+/** Apply the list filters. `skip` leaves one filter out so the segment / pill counts stay live. */
+function filterLevels(levels: Level[], v: View, skip?: 'seg' | 'cat') {
+  const t = v.q.trim().toLowerCase();
+  return levels.filter((l) => {
+    if (t && !`${l.p.name} ${l.p.sku} ${l.p.brand}`.toLowerCase().includes(t)) return false;
+    if (v.reservedOnly && l.reserved <= 0) return false;
+    if (skip !== 'seg' && v.seg !== 'all' && l.state !== v.seg) return false;
+    if (skip !== 'cat' && v.cat !== 'all' && l.p.categoryId !== v.cat) return false;
+    return true;
+  });
+}
+
+const unitOf = (p: Product) => (p.soldByWeight ? 'kg' : p.unit === 'pack' ? 'packs' : 'pcs');
+const qty = (n: number) => `${Number(n.toFixed(2))}`;
+const STATUS: Record<StockState, { label: string; cls: string; dot: string; bar: string }> = {
+  ok: { label: 'In stock', cls: 'bg-[#e8f4eb] text-[#2e6b3a]', dot: '#2e9a4a', bar: '#2e6b3a' },
+  low: { label: 'Low', cls: 'bg-[#fdf1e3] text-[#b45a12]', dot: '#d9822b', bar: '#d9822b' },
+  out: { label: 'Out', cls: 'bg-[#fdecec] text-[#c8151d]', dot: '#c8151d', bar: '#c8151d' },
+};
+
+function exportLevels(rows: Level[], filename: string) {
+  if (!rows.length) return toast.info('Nothing to export');
+  exportCsv(filename, [
+    ['SKU', 'Product', 'Category', 'Unit', 'On hand', 'Reserved', 'Safety buffer', 'Available', 'Reorder point', 'Status', 'Cost price', 'Value at cost'],
+    ...rows.map((l) => [l.p.sku, l.p.name, l.top?.name ?? '', unitOf(l.p), l.onHand, l.reserved, l.buffer, l.available, l.p.reorderPoint, STATUS[l.state].label, l.p.costPrice, l.value.toFixed(2)]),
+  ]);
+  toast.success(`Exported ${rows.length} product${rows.length === 1 ? '' : 's'}`);
+}
+
 function InventoryInner({ s }: { s: AppState }) {
   const branchId = s.session.branchId;
+  const branch = branchName(s, branchId);
   const canEdit = can(s, 'inventory.edit') || can(s, 'inventory.create');
   const levels = useLevels(s, branchId);
+  const [tab, setTabState] = useState<TabKey>(() => {
+    const t = urlParam('tab');
+    return TABS.find((x) => x.key === t)?.key ?? 'stock';
+  });
+  const [view, setView] = useState<View>({ q: '', seg: 'all', cat: 'all', reservedOnly: false, page: 1, size: 10 });
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordPid, setRecordPid] = useState<string | undefined>();
+  const [receivePid, setReceivePid] = useState<string | null>(null);
   const [cardPid, setCardPid] = useState<string | null>(null);
 
-  const low = levels.filter((l) => l.state === 'low').length;
-  const out = levels.filter((l) => l.state === 'out').length;
-  const value = levels.reduce((n, l) => n + l.value, 0);
+  /** Switch tab and keep ?tab= in the address bar (no navigation). */
+  const setTab = (t: TabKey) => {
+    setTabState(t);
+    const url = new URL(window.location.href);
+    if (t === 'stock') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', t);
+    window.history.replaceState(null, '', url);
+  };
+  /** Changing a filter starts again at page 1. */
+  const patchView = (p: Partial<View>) => setView((v) => ({ ...v, page: 1, ...p }));
+
+  const rows = useMemo(() => filterLevels(levels, view), [levels, view]);
   const pendingRcv = (s.receivings ?? []).filter((r) => r.branchId === branchId && r.status === 'pending_approval').length;
+  const openRecord = (pid?: string) => { setRecordPid(pid); setRecordOpen(true); };
+  const openReceive = (pid: string) => { setReceivePid(pid); setTab('receiving'); };
 
   return (
-    <div className="space-y-6 min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500 min-w-0">
-          Stock for <b className="text-gray-800">{branchName(s, branchId)}</b> is calculated from recorded movements — it is never edited directly.
-          Safety buffer: <b>{num(getSetting(s, 'safetyBuffer', branchId))} units</b>.
-        </p>
-        {canEdit && <Button onClick={() => { setRecordPid(undefined); setRecordOpen(true); }}><Plus {...ICON} /> Record movement</Button>}
+    <div className="min-w-0">
+      {/* Header */}
+      <div className="mb-5 md:mb-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs md:text-sm font-semibold uppercase tracking-[0.12em] text-[#ae754d]">{branch} · Counted from recorded movements</p>
+            <h1 className="mt-1 text-4xl md:text-5xl font-bold uppercase leading-none text-[#1d1716]" style={OSWALD}>Inventory</h1>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <OutlineButton onClick={() => exportLevels(rows, `stock-levels-${branchId}.csv`)}><Download className="w-4 h-4" {...ICON} />Export</OutlineButton>
+            {canEdit && <RedButton onClick={() => openRecord()}><Plus className="w-4 h-4" />Record movement</RedButton>}
+          </div>
+        </div>
+        <nav aria-label="Inventory sections" className="mt-5 border-b border-[#e8ddd4] overflow-x-auto overflow-y-hidden [scrollbar-width:none]">
+          <div role="tablist" className="flex gap-1 min-w-max">
+            {TABS.map((t) => {
+              const active = t.key === tab;
+              const Icon = t.icon;
+              return (
+                <button key={t.key} type="button" role="tab" aria-selected={active} onClick={() => setTab(t.key)}
+                  className={cn('relative inline-flex items-center gap-2 h-11 px-3 sm:px-4 text-sm whitespace-nowrap transition-colors',
+                    active ? 'font-semibold text-[#c8151d]' : 'font-medium text-[#5b4f4b] hover:text-[#1d1716]')}>
+                  <Icon className="w-4 h-4" {...ICON} />{t.label}
+                  {t.key === 'receiving' && pendingRcv > 0 && (
+                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#ae754d] text-white text-[11px] font-semibold inline-flex items-center justify-center" aria-label={`${pendingRcv} waiting for approval`}>{pendingRcv}</span>
+                  )}
+                  {active && <span className="absolute left-2 right-2 -bottom-px h-[2px] rounded-full bg-[#c8151d]" aria-hidden />}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="SKUs stocked" value={levels.length} sub={`${levels.filter((l) => l.onHand > 0).length} with stock on hand`} icon={<Boxes className="w-5 h-5" {...ICON} />} />
-        <StatCard title="Low stock" value={low} sub="At or below reorder point" accent="border-l-amber-500" valueClass="text-amber-600" icon={<AlertTriangle className="w-5 h-5" {...ICON} />} />
-        <StatCard title="Out of stock" value={out} sub="Hidden from online sale" accent="border-l-[#dc2626]" valueClass="text-[#dc2626]" icon={<PackageX className="w-5 h-5" {...ICON} />} />
-        <StatCard valueClass="text-lg sm:text-2xl xl:text-3xl text-[#c8151d] break-words" title="Stock value (cost)" value={pesoShort(value)} sub="On hand × cost price" accent="border-l-green-500" icon={<Wallet className="w-5 h-5" {...ICON} />} />
-      </div>
-
-      <Tabs defaultValue="levels">
-        <TabsList className="w-full justify-start overflow-x-auto">
-          <TabsTrigger value="levels">Stock levels</TabsTrigger>
-          <TabsTrigger value="receiving">
-            Direct Receiving
-            {pendingRcv > 0 && <span className="rounded-full bg-amber-500 text-white text-[10px] px-1.5">{pendingRcv}</span>}
-          </TabsTrigger>
-          <TabsTrigger value="ledger">Movements ledger</TabsTrigger>
-          <TabsTrigger value="count">Stock take</TabsTrigger>
-          <TabsTrigger value="transfers">Transfers</TabsTrigger>
-        </TabsList>
-        <TabsContent value="levels" className="mt-4">
-          <StockLevels s={s} levels={levels} onCard={setCardPid} onRecord={canEdit ? (pid) => { setRecordPid(pid); setRecordOpen(true); } : undefined} />
-        </TabsContent>
-        <TabsContent value="receiving" className="mt-4">
-          <DirectReceiving s={s} branchId={branchId} canCreate={canEdit} canApprove={can(s, 'inventory.approve')} />
-        </TabsContent>
-        <TabsContent value="ledger" className="mt-4"><Ledger s={s} branchId={branchId} onCard={setCardPid} /></TabsContent>
-        <TabsContent value="count" className="mt-4"><StockTake s={s} branchId={branchId} canEdit={canEdit} /></TabsContent>
-        <TabsContent value="transfers" className="mt-4"><Transfers s={s} branchId={branchId} canEdit={canEdit} /></TabsContent>
-      </Tabs>
+      {tab === 'stock' && (
+        <StockLevels s={s} branch={branch} levels={levels} rows={rows} view={view} setView={setView} patchView={patchView}
+          onCard={setCardPid} onRecord={canEdit ? openRecord : undefined} onReceive={canEdit ? openReceive : undefined} />
+      )}
+      {tab === 'receiving' && (
+        <DirectReceiving s={s} branchId={branchId} canCreate={canEdit} canApprove={can(s, 'inventory.approve')} prefillPid={receivePid} onPrefillDone={() => setReceivePid(null)} />
+      )}
+      {tab === 'movements' && <Ledger s={s} branchId={branchId} onCard={setCardPid} />}
+      {tab === 'stock-take' && <StockTake s={s} branchId={branchId} canEdit={canEdit} />}
+      {tab === 'transfers' && <Transfers s={s} branchId={branchId} canEdit={canEdit} />}
 
       {recordOpen && <RecordDialog s={s} branchId={branchId} initialPid={recordPid} onClose={() => setRecordOpen(false)} />}
       {cardPid && <StockCard s={s} branchId={branchId} productId={cardPid} onClose={() => setCardPid(null)} />}
@@ -113,76 +181,315 @@ function InventoryInner({ s }: { s: AppState }) {
 }
 
 // ---------------- (a) Stock levels ----------------
-function StockLevels({ s, levels, onCard, onRecord }: { s: AppState; levels: Level[]; onCard: (id: string) => void; onRecord?: (id: string) => void }) {
-  const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<'all' | 'low' | 'out' | 'attention'>('all');
-  const [cat, setCat] = useState('all');
-  const tree = categoryTree(s);
-  const rows = levels.filter((l) => {
-    if (filter === 'low' && l.state !== 'low') return false;
-    if (filter === 'out' && l.state !== 'out') return false;
-    if (filter === 'attention' && l.state === 'ok') return false;
-    if (cat !== 'all' && !inCategory(s, l.p, cat)) return false;
-    const t = q.trim().toLowerCase();
-    return !t || `${l.p.name} ${l.p.sku} ${l.p.brand}`.toLowerCase().includes(t);
-  });
+interface StockLevelsProps {
+  s: AppState; branch: string; levels: Level[]; rows: Level[]; view: View;
+  setView: (fn: (v: View) => View) => void; patchView: (p: Partial<View>) => void;
+  onCard: (id: string) => void; onRecord?: (id: string) => void; onReceive?: (id: string) => void;
+}
+
+function StockLevels({ s, branch, levels, rows, view, setView, patchView, onCard, onRecord, onReceive }: StockLevelsProps) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const buffer = num(getSetting(s, 'safetyBuffer', s.session.branchId));
+  const tops = useMemo(() => topCategories(s), [s]);
+
+  // Stat cards
+  const low = levels.filter((l) => l.state === 'low').length;
+  const out = levels.filter((l) => l.state === 'out').length;
+  const reservedUnits = levels.reduce((n, l) => n + l.reserved, 0);
+  const value = levels.reduce((n, l) => n + l.value, 0);
+  const skusOnHand = levels.filter((l) => l.onHand > 0).length;
+
+  // Live counts: the segment counts ignore the segment, the pill counts ignore the category.
+  const segBase = filterLevels(levels, view, 'seg');
+  const segCount = (k: Seg) => (k === 'all' ? segBase.length : segBase.filter((l) => l.state === k).length);
+  const catBase = filterLevels(levels, view, 'cat');
+  const pills = [
+    { id: 'all', name: 'All', color: '#2a2322', n: catBase.length },
+    ...tops.map((c) => ({ id: c.id, name: c.name, color: c.color ?? '#8a7f7a', n: catBase.filter((l) => l.p.categoryId === c.id).length })),
+  ];
+
+  // Pagination
+  const pages = Math.max(1, Math.ceil(rows.length / view.size));
+  const page = Math.min(view.page, pages);
+  const start = (page - 1) * view.size;
+  const shown = rows.slice(start, start + view.size);
+  const shownIds = shown.map((l) => l.p.id);
+  const allShownSelected = shownIds.length > 0 && shownIds.every((id) => selected.includes(id));
+  const someShownSelected = shownIds.some((id) => selected.includes(id));
+  const toggleSel = (id: string, on: boolean) => setSelected((xs) => (on ? [...xs.filter((x) => x !== id), id] : xs.filter((x) => x !== id)));
+  const goPage = (n: number) => setView((v) => ({ ...v, page: Math.max(1, Math.min(pages, n)) }));
+
+  const filtered = view.q || view.seg !== 'all' || view.cat !== 'all' || view.reservedOnly;
+  const rowProps = { selected, toggleSel, onCard, onRecord, onReceive };
 
   return (
-    <Panel bodyClass="p-4">
-      <Toolbar>
-        <div className="relative w-full sm:w-auto">
-          <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" {...ICON} />
-          <input className={cn(inputClass, 'pl-8 w-full sm:w-60')} placeholder="Search product or SKU" value={q} onChange={(e) => setQ(e.target.value)} />
+    <>
+      {/* Stat cards: tap to filter, tap again to clear */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
+        <div className="rounded-2xl bg-[#2a2322] px-4 sm:px-5 py-4 min-w-0 text-white">
+          <p className="text-[11px] sm:text-xs uppercase tracking-[0.14em] text-[#d9c7b9]" style={OSWALD}>Stock value at cost</p>
+          <p className="mt-1.5 text-2xl sm:text-4xl leading-none font-semibold text-[#ff4b4f] tabular-nums break-words" style={OSWALD}>{pesoShort(value)}</p>
+          <p className="mt-2 text-xs text-[#cfc3bb]">{skusOnHand} SKUs on hand at {branch}</p>
         </div>
-        <select className={selectClass} value={cat} onChange={(e) => setCat(e.target.value)}>
-          <option value="all">All categories</option>
-          {tree.map((c) => <option key={c.id} value={c.id}>{'— '.repeat(c.depth)}{c.name}</option>)}
-        </select>
-        <div className="flex flex-wrap rounded-lg border border-gray-200 p-0.5">
-          {(['all', 'attention', 'low', 'out'] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)} className={cn('px-3 py-1 text-xs rounded-md', filter === f ? 'bg-[#c8151d] text-white' : 'text-gray-600 hover:bg-gray-50')}>
-              {f === 'all' ? 'All' : f === 'attention' ? 'Low + out' : f === 'low' ? 'Low stock' : 'Out of stock'}
-            </button>
-          ))}
+        <StatButton active={view.seg === 'low'} onClick={() => patchView({ seg: view.seg === 'low' ? 'all' : 'low' })} color="#ae754d" title="Low stock" value={low} sub="Available at or below reorder point" />
+        <StatButton active={view.seg === 'out'} onClick={() => patchView({ seg: view.seg === 'out' ? 'all' : 'out' })} color="#c8151d" title="Out of stock" value={out} sub="Hidden from ordering until restocked" />
+        <StatButton active={view.reservedOnly} onClick={() => patchView({ reservedOnly: !view.reservedOnly })} color="#2f4a9e" title="Reserved" value={qty(reservedUnits)} sub="Units held for open orders" />
+      </div>
+
+      <CatalogCard className="overflow-hidden">
+        <div className="p-3 sm:p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="relative flex-1 min-w-0 basis-full md:basis-64">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" {...ICON} />
+              <input value={view.q} onChange={(e) => patchView({ q: e.target.value })} placeholder="Search product or SKU" aria-label="Search product or SKU"
+                className="w-full h-11 rounded-xl border border-[#e3d6cc] bg-white pl-9 pr-9 text-sm outline-none focus:border-[#c8151d]/50 focus:ring-4 focus:ring-[#c8151d]/10" />
+              {view.q && <button type="button" onClick={() => patchView({ q: '' })} aria-label="Clear search" className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>}
+            </div>
+            <div className="flex w-full md:w-auto rounded-xl bg-[#ece4dd] p-1" role="group" aria-label="Filter by stock status">
+              {SEGS.map((o) => (
+                <button key={o.key} type="button" aria-pressed={view.seg === o.key} onClick={() => patchView({ seg: o.key })}
+                  className={cn('flex-1 md:flex-none h-9 px-2 sm:px-3 rounded-lg text-xs sm:text-sm whitespace-nowrap', view.seg === o.key ? 'bg-white shadow-sm font-semibold text-[#1d1716]' : 'text-gray-600 hover:text-[#1d1716]')}>
+                  {o.label} <span className="text-gray-400 font-normal tabular-nums">{segCount(o.key)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="-mx-3 sm:mx-0 px-3 sm:px-0 flex gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible pb-1 sm:pb-0 [scrollbar-width:none]">
+            {pills.map((c) => {
+              const on = view.cat === c.id;
+              return (
+                <button key={c.id} type="button" aria-pressed={on} onClick={() => patchView({ cat: c.id })}
+                  className={cn('shrink-0 inline-flex items-center gap-2 h-9 px-3.5 rounded-full border text-sm whitespace-nowrap transition-colors',
+                    on ? 'border-[#2a2322] bg-[#2a2322] text-white font-semibold' : 'border-[#e3d6cc] bg-white text-[#1d1716] font-medium hover:border-[#d9c7b9]')}>
+                  <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: on && c.id === 'all' ? '#ffffff' : c.color }} />{c.name}
+                  <span className={cn('text-xs font-normal tabular-nums', on ? 'text-white/70' : 'text-gray-400')}>{c.n}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="flex items-start gap-2 text-xs text-gray-500">
+            <Info className="w-3.5 h-3.5 mt-px shrink-0" {...ICON} />
+            <span>Status compares available stock with the reorder point. Available = on hand − reserved for open orders − {buffer}-unit safety buffer, and shoppers can only order what&apos;s available.</span>
+          </p>
+
+          {(view.reservedOnly || selected.length > 0) && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {view.reservedOnly && (
+                <button type="button" onClick={() => patchView({ reservedOnly: false })} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full bg-[#eef1fa] text-xs font-medium text-[#2f4a9e]">
+                  Reserved for open orders<X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {selected.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                  <span className="text-sm font-semibold text-[#1d1716]">{selected.length} selected</span>
+                  <button type="button" onClick={() => exportLevels(levels.filter((l) => selected.includes(l.p.id)), `stock-levels-selected.csv`)}
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[#e3d6cc] bg-white text-sm font-medium hover:bg-[#faf6f2]">
+                    <Download className="w-4 h-4" {...ICON} />Export selected
+                  </button>
+                  <button type="button" onClick={() => setSelected([])} className="h-9 px-2 text-sm text-gray-500 hover:text-[#1d1716]">Clear</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <Button variant="outline" className="ml-auto" onClick={() => exportCsv('stock-levels.csv', [['SKU', 'Product', 'On hand', 'Reserved', 'Buffer', 'Available', 'Reorder point', 'Status', 'Value at cost'], ...rows.map((l) => [l.p.sku, l.p.name, l.onHand, l.reserved, l.buffer, l.available, l.p.reorderPoint, l.state, l.value.toFixed(2)])])}>
-          <Download {...ICON} /> Export
-        </Button>
-      </Toolbar>
-      {rows.length === 0 ? <EmptyState title="Nothing to show" sub="No products match this filter" /> : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead><TableHead className="text-right">On hand</TableHead><TableHead className="text-right">Reserved</TableHead>
-              <TableHead className="text-right">Safety buffer</TableHead><TableHead className="text-right">Available to sell</TableHead><TableHead className="text-right">Reorder pt</TableHead>
-              <TableHead>Status</TableHead><TableHead className="text-right">Value at cost</TableHead><TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((l) => (
-              <TableRow key={l.p.id} className="cursor-pointer" onClick={() => onCard(l.p.id)}>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl"><ProductImage image={l.p.image} /></span>
-                    <div><p className="font-medium text-gray-900">{l.p.name}</p><p className="text-[11px] text-gray-400">{l.p.sku} · {categoryPath(s, l.p.categoryId)}</p></div>
+
+        {rows.length === 0 ? (
+          <div className="px-5 py-14 text-center border-t border-[#f0e8e2]">
+            <Package className="w-9 h-9 mx-auto text-gray-300" {...ICON} />
+            <p className="mt-2 font-medium text-[#1d1716]">No products match these filters</p>
+            {filtered && <button type="button" onClick={() => patchView({ q: '', seg: 'all', cat: 'all', reservedOnly: false })} className="mt-1 text-sm font-semibold text-[#c8151d] hover:underline">Clear filters</button>}
+          </div>
+        ) : (
+          <>
+            {/* Desktop table */}
+            <table className="hidden xl:table w-full text-sm">
+              <thead>
+                <tr className="bg-[#f6f0eb] text-[11px] uppercase tracking-wider text-gray-500">
+                  <th className="w-12 py-3 pl-4 text-left">
+                    <Checkbox checked={allShownSelected ? true : someShownSelected ? 'indeterminate' : false} aria-label="Select this page"
+                      onCheckedChange={(v) => setSelected((xs) => (v === true ? Array.from(new Set([...xs, ...shownIds])) : xs.filter((x) => !shownIds.includes(x))))} />
+                  </th>
+                  <th className="text-left font-semibold py-3">Product</th>
+                  <th className="text-right font-semibold py-3 w-[88px]">On hand</th>
+                  <th className="text-right font-semibold py-3 w-[92px]">Reserved</th>
+                  <th className="text-left font-semibold py-3 pl-4 w-[170px]">Available</th>
+                  <th className="text-right font-semibold py-3 w-[96px]">Reorder at</th>
+                  <th className="text-left font-semibold py-3 pl-4 w-[104px]">Status</th>
+                  <th className="text-right font-semibold py-3 w-[118px]">Value at cost</th>
+                  <th className="w-[128px] pr-4"><span className="sr-only">Action</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((l) => <LevelRow key={l.p.id} l={l} {...rowProps} />)}
+              </tbody>
+            </table>
+
+            {/* Phone / tablet cards */}
+            <ul className="xl:hidden">
+              {shown.map((l) => <LevelCard key={l.p.id} l={l} {...rowProps} />)}
+            </ul>
+
+            {/* Footer */}
+            <div className="flex flex-wrap items-center gap-3 px-3 sm:px-4 py-3 border-t border-[#f0e8e2]">
+              <span className="text-sm text-gray-500">Showing {start + 1}–{start + shown.length} of {rows.length} product{rows.length === 1 ? '' : 's'}</span>
+              <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 whitespace-nowrap">Rows per page</span>
+                  <div className="inline-flex rounded-xl bg-[#ece4dd] p-1" role="group" aria-label="Rows per page">
+                    {PAGE_SIZES.map((n) => (
+                      <button key={n} type="button" aria-pressed={view.size === n} onClick={() => patchView({ size: n })}
+                        className={cn('h-8 min-w-9 px-2 rounded-lg text-xs tabular-nums', view.size === n ? 'bg-white shadow-sm font-semibold text-[#1d1716]' : 'text-gray-600 hover:text-[#1d1716]')}>{n}</button>
+                    ))}
                   </div>
-                </TableCell>
-                <TableCell className="text-right font-semibold">{l.onHand}</TableCell>
-                <TableCell className="text-right text-gray-600">{l.reserved}</TableCell>
-                <TableCell className="text-right text-gray-400">{l.buffer}</TableCell>
-                <TableCell className={cn('text-right font-bold', l.state === 'out' ? 'text-[#dc2626]' : l.state === 'low' ? 'text-amber-600' : 'text-[#c8151d]')}>{l.available}</TableCell>
-                <TableCell className="text-right text-gray-500">{l.p.reorderPoint}</TableCell>
-                <TableCell><StateBadge value={l.state} label={l.state === 'ok' ? 'OK' : l.state === 'low' ? 'Low' : 'Out'} /></TableCell>
-                <TableCell className="text-right">{peso(l.value)}</TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  {onRecord && <Button variant="ghost" size="sm" onClick={() => onRecord(l.p.id)}>Record</Button>}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </Panel>
+                </div>
+                <Pager page={page} pages={pages} onPage={goPage} />
+              </div>
+            </div>
+          </>
+        )}
+      </CatalogCard>
+    </>
+  );
+}
+
+function StatButton({ active, onClick, color, title, value, sub }: { active: boolean; onClick: () => void; color: string; title: string; value: number | string; sub: string }) {
+  return (
+    <button type="button" aria-pressed={active} onClick={onClick}
+      className={cn('rounded-2xl border px-4 sm:px-5 py-4 text-left min-w-0 transition-colors',
+        active ? 'border-[#c8151d] bg-[#fdf0ef] ring-1 ring-[#c8151d]' : 'border-[#eadfd6] bg-[#fffdfb] hover:border-[#d9c7b9]')}>
+      <span className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#1d1716]"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />{title}</span>
+      <span className="block mt-1.5 text-3xl sm:text-4xl leading-none font-semibold tabular-nums" style={{ ...OSWALD, color }}>{value}</span>
+      <span className="block mt-2 text-xs text-gray-500 leading-snug">{sub}</span>
+    </button>
+  );
+}
+
+/** Numbered pages with "…"; phones get a compact "page / pages". */
+function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (n: number) => void }) {
+  const list: (number | '…')[] = pages <= 7 ? Array.from({ length: pages }, (_, i) => i + 1)
+    : page <= 4 ? [1, 2, 3, 4, 5, '…', pages]
+      : page >= pages - 3 ? [1, '…', pages - 4, pages - 3, pages - 2, pages - 1, pages]
+        : [1, '…', page - 1, page, page + 1, '…', pages];
+  const btn = 'h-10 min-w-10 px-2 inline-flex items-center justify-center rounded-xl text-sm tabular-nums';
+  return (
+    <nav aria-label="Pages" className="flex items-center gap-1">
+      <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 1} aria-label="Previous page" className={cn(btn, 'border border-[#e3d6cc] bg-white text-[#1d1716] hover:bg-[#faf6f2] disabled:opacity-40')}><ChevronLeft className="w-4 h-4" {...ICON} /></button>
+      <span className="sm:hidden px-2 text-sm text-gray-600 tabular-nums">{page} / {pages}</span>
+      {list.map((n, i) => (n === '…'
+        ? <span key={`gap-${i}`} className="hidden sm:inline-flex w-8 justify-center text-gray-400">…</span>
+        : <button key={n} type="button" onClick={() => onPage(n)} aria-current={n === page ? 'page' : undefined}
+            className={cn(btn, 'hidden sm:inline-flex', n === page ? 'bg-[#2a2322] text-white font-semibold' : 'text-[#1d1716] hover:bg-[#f3ece6]')}>{n}</button>))}
+      <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pages} aria-label="Next page" className={cn(btn, 'border border-[#e3d6cc] bg-white text-[#1d1716] hover:bg-[#faf6f2] disabled:opacity-40')}><ChevronRight className="w-4 h-4" {...ICON} /></button>
+    </nav>
+  );
+}
+
+// ---------------- Stock list rows ----------------
+interface LevelRowProps {
+  l: Level; selected: string[]; toggleSel: (id: string, on: boolean) => void;
+  onCard: (id: string) => void; onRecord?: (id: string) => void; onReceive?: (id: string) => void;
+}
+
+function Thumb({ l }: { l: Level }) {
+  return (
+    <span className="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 border border-[#f0e4da] text-xl" style={stripes(l.top?.color ?? '#b9aaa0')}>
+      <ProductImage image={l.p.image} fill alt="" />
+    </span>
+  );
+}
+
+function NameCell({ l, onCard }: { l: Level; onCard: (id: string) => void }) {
+  return (
+    <div className="min-w-0">
+      <button type="button" onClick={() => onCard(l.p.id)} title="Open stock card" className="block max-w-full truncate text-left font-semibold text-[#1d1716] hover:text-[#c8151d] hover:underline underline-offset-2">{l.p.name}</button>
+      <p className="text-xs text-gray-500 truncate">{l.p.sku} · {l.top?.name ?? 'Uncategorised'}</p>
+    </div>
+  );
+}
+
+function StatusPill({ state }: { state: StockState }) {
+  const st = STATUS[state];
+  return (
+    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 h-6 text-xs font-semibold whitespace-nowrap', st.cls)}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.dot }} />{st.label}
+    </span>
+  );
+}
+
+function AvailableCell({ l }: { l: Level }) {
+  const pct = l.state === 'out' ? 0 : Math.max(4, Math.min(100, (l.available / Math.max(10, l.p.reorderPoint * 4)) * 100));
+  const tone = STATUS[l.state].bar;
+  return (
+    <div className="w-full max-w-[132px]">
+      <p className="whitespace-nowrap leading-tight">
+        <span className="font-bold tabular-nums" style={{ color: l.state === 'ok' ? '#1d1716' : tone }}>{qty(l.available)}</span>{' '}
+        <span className="text-[11px] text-gray-400">{unitOf(l.p)}</span>
+      </p>
+      <div className="mt-1 h-1 rounded-full bg-[#efe7e0]"><div className="h-1 rounded-full" style={{ width: `${pct}%`, background: tone }} /></div>
+    </div>
+  );
+}
+
+function RowAction({ l, onRecord, onReceive, compact }: Pick<LevelRowProps, 'l' | 'onRecord' | 'onReceive'> & { compact?: boolean }) {
+  const size = compact ? 'h-9 px-3' : 'h-10 px-3.5';
+  if (l.state !== 'ok' && onReceive) {
+    return (
+      <button type="button" onClick={() => onReceive(l.p.id)} aria-label={`Receive ${l.p.name}`}
+        className={cn('inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#2a2322] text-sm font-semibold text-white hover:bg-[#1d1716] whitespace-nowrap', size)}>
+        <Truck className="w-4 h-4" {...ICON} />Receive
+      </button>
+    );
+  }
+  if (!onRecord) return null;
+  return (
+    <button type="button" onClick={() => onRecord(l.p.id)} aria-label={`Record movement for ${l.p.name}`}
+      className={cn('inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#e3d6cc] bg-white text-sm font-semibold text-[#1d1716] hover:bg-[#faf6f2] whitespace-nowrap', size)}>
+      <Pencil className="w-3.5 h-3.5" {...ICON} />Record
+    </button>
+  );
+}
+
+function LevelRow({ l, selected, toggleSel, onCard, onRecord, onReceive }: LevelRowProps) {
+  const sel = selected.includes(l.p.id);
+  const u = unitOf(l.p);
+  return (
+    <tr className={cn('border-t border-[#f0e8e2] align-middle', sel ? 'bg-[#fdf6f4]' : 'hover:bg-[#fbf7f3]')}>
+      <td className="py-3 pl-4"><Checkbox checked={sel} onCheckedChange={(v) => toggleSel(l.p.id, v === true)} aria-label={`Select ${l.p.name}`} /></td>
+      <td className="py-3 pr-3"><div className="flex items-center gap-3 min-w-0"><Thumb l={l} /><NameCell l={l} onCard={onCard} /></div></td>
+      <td className="py-3 text-right font-semibold text-[#1d1716] tabular-nums whitespace-nowrap">{qty(l.onHand)} {u}</td>
+      <td className="py-3 text-right text-gray-600 tabular-nums whitespace-nowrap">{l.reserved > 0 ? `${qty(l.reserved)} ${u}` : <span className="text-gray-300">—</span>}</td>
+      <td className="py-3 pl-4"><AvailableCell l={l} /></td>
+      <td className="py-3 text-right text-gray-600 tabular-nums whitespace-nowrap">{l.p.reorderPoint} {u}</td>
+      <td className="py-3 pl-4"><StatusPill state={l.state} /></td>
+      <td className="py-3 text-right font-semibold text-[#1d1716] tabular-nums whitespace-nowrap">{pesoShort(l.value)}</td>
+      <td className="py-3 pr-4 text-right"><RowAction l={l} onRecord={onRecord} onReceive={onReceive} /></td>
+    </tr>
+  );
+}
+
+function LevelCard({ l, selected, toggleSel, onCard, onRecord, onReceive }: LevelRowProps) {
+  const sel = selected.includes(l.p.id);
+  const u = unitOf(l.p);
+  return (
+    <li className={cn('border-t border-[#f0e8e2] px-3 sm:px-4 py-3 flex gap-3', sel && 'bg-[#fdf6f4]')}>
+      <div className="pt-3"><Checkbox checked={sel} onCheckedChange={(v) => toggleSel(l.p.id, v === true)} aria-label={`Select ${l.p.name}`} /></div>
+      <Thumb l={l} />
+      <div className="flex-1 min-w-0">
+        <NameCell l={l} onCard={onCard} />
+        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+          <span>On hand <b className="text-[#1d1716] tabular-nums">{qty(l.onHand)} {u}</b></span>
+          <span>Available <b className="tabular-nums" style={{ color: l.state === 'ok' ? '#1d1716' : STATUS[l.state].bar }}>{qty(l.available)} {u}</b></span>
+          {l.reserved > 0 && <span className="hidden sm:inline">Reserved <b className="text-[#1d1716] tabular-nums">{qty(l.reserved)} {u}</b></span>}
+          <span className="hidden sm:inline">Value <b className="text-[#1d1716] tabular-nums">{pesoShort(l.value)}</b></span>
+        </div>
+      </div>
+      <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+        <StatusPill state={l.state} />
+        <RowAction l={l} onRecord={onRecord} onReceive={onReceive} compact />
+      </div>
+    </li>
   );
 }
 
@@ -204,7 +511,7 @@ function Ledger({ s, branchId, onCard }: { s: AppState; branchId: string; onCard
   }, [s, branchId, type, q]);
 
   return (
-    <Panel bodyClass="p-4">
+    <Panel className={CARD} bodyClass="p-4">
       <Toolbar>
         <div className="relative w-full sm:w-auto">
           <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400" {...ICON} />
@@ -393,7 +700,7 @@ function StockTake({ s, branchId, canEdit }: { s: AppState; branchId: string; ca
   }
 
   return (
-    <Panel title="Stock take (cycle count)" action={
+    <Panel className={CARD} title="Stock take (cycle count)" action={
       <div className="flex flex-wrap items-center gap-2">
         <select className={selectClass} value={cat} onChange={(e) => { setCat(e.target.value); setCounts({}); }}>
           {tree.map((c) => <option key={c.id} value={c.id}>{'— '.repeat(c.depth)}{c.icon} {c.name}</option>)}
@@ -457,7 +764,7 @@ function Transfers({ s, branchId, canEdit }: { s: AppState; branchId: string; ca
 
   return (
     <>
-      <Panel title="Inter-branch transfers" action={
+      <Panel className={CARD} title="Inter-branch transfers" action={
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-xs text-gray-600"><Checkbox checked={showAll} onCheckedChange={(v) => setShowAll(v === true)} /> All branches</label>
           {canEdit && <Button onClick={() => setCreating(true)}><Plus {...ICON} /> New transfer</Button>}
@@ -673,8 +980,9 @@ function RcvStatus({ status }: { status: Receiving['status'] }) {
     : <Pill className="bg-amber-100 text-amber-800">Pending approval</Pill>;
 }
 
-function DirectReceiving({ s, branchId, canCreate, canApprove }: { s: AppState; branchId: string; canCreate: boolean; canApprove: boolean }) {
-  const [open, setOpen] = useState(false);
+function DirectReceiving({ s, branchId, canCreate, canApprove, prefillPid, onPrefillDone }: { s: AppState; branchId: string; canCreate: boolean; canApprove: boolean; prefillPid?: string | null; onPrefillDone?: () => void }) {
+  // Opened from a Low / Out row on Stock levels: start with the delivery dialog open for that product.
+  const [open, setOpen] = useState(() => canCreate && !!prefillPid);
   const [detailId, setDetailId] = useState<string | null>(null);
   const threshold = num(getSetting(s, 'receivingApprovalAbove', branchId)) || 20000;
   const list = (s.receivings ?? []).filter((r) => r.branchId === branchId).slice().sort((a, b) => b.at.localeCompare(a.at));
@@ -699,7 +1007,7 @@ function DirectReceiving({ s, branchId, canCreate, canApprove }: { s: AppState; 
 
   return (
     <>
-      <Panel
+      <Panel className={CARD}
         title={<div className="min-w-0"><h2 className="text-base font-semibold text-gray-900">Direct Receiving</h2><p className="text-xs text-gray-500">Supplier deliveries go straight into stock. Above {pesoShort(threshold)} a manager must approve before stock is added.</p></div>}
         action={canCreate ? <Button className="shrink-0" onClick={() => setOpen(true)}><Plus {...ICON} /> <span className="hidden sm:inline">Receive delivery</span><span className="sm:hidden">Receive</span></Button> : undefined}
         bodyClass="p-0"
@@ -746,7 +1054,7 @@ function DirectReceiving({ s, branchId, canCreate, canApprove }: { s: AppState; 
           </Table>
         )}
       </Panel>
-      {open && <ReceiveDialog s={s} branchId={branchId} threshold={threshold} onClose={() => setOpen(false)} onPosted={(id) => setDetailId(id)} />}
+      {open && <ReceiveDialog s={s} branchId={branchId} threshold={threshold} initialPid={prefillPid ?? undefined} onClose={() => { setOpen(false); onPrefillDone?.(); }} onPosted={(id) => setDetailId(id)} />}
       {detail && <ReceivingDetail s={s} r={detail} canApprove={canApprove} onApprove={() => approve(detail)} onClose={() => setDetailId(null)} />}
     </>
   );
@@ -755,13 +1063,16 @@ function DirectReceiving({ s, branchId, canCreate, canApprove }: { s: AppState; 
 type DraftLine = { key: string; q: string; productId: string; amount: string; cost: string; batch: string; producedOn: string; expiresOn: string };
 const blankLine = (): DraftLine => ({ key: uid('rl'), q: '', productId: '', amount: '', cost: '', batch: '', producedOn: '', expiresOn: '' });
 
-function ReceiveDialog({ s, branchId, threshold, onClose, onPosted }: { s: AppState; branchId: string; threshold: number; onClose: () => void; onPosted: (id: string) => void }) {
+function ReceiveDialog({ s, branchId, threshold, initialPid, onClose, onPosted }: { s: AppState; branchId: string; threshold: number; initialPid?: string; onClose: () => void; onPosted: (id: string) => void }) {
   const [supplierId, setSupplierId] = useState(s.suppliers[0]?.id ?? '__other');
   const [otherName, setOtherName] = useState('');
   const [receiptNo, setReceiptNo] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
   const [note, setNote] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>(() => [blankLine()]);
+  const [lines, setLines] = useState<DraftLine[]>(() => {
+    const p = initialPid ? s.products.find((x) => x.id === initialPid) : undefined;
+    return [p ? { ...blankLine(), productId: p.id, cost: String(p.costPrice) } : blankLine()];
+  });
   const products = s.products.filter((p) => p.status !== 'discontinued');
   const productOf = (id: string) => s.products.find((p) => p.id === id);
   const supplierName = supplierId === '__other' ? otherName.trim() : (s.suppliers.find((x) => x.id === supplierId)?.name ?? '');
