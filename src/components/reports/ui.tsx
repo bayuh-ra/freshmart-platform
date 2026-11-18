@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, Download, Printer } from 'lucide-react';
-import { Button } from '@/src/components/ui/shadcn/button';
+import { Download, FileText } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { pctChange } from './analytics';
 
@@ -16,47 +15,45 @@ export function useNow(ms = 60_000) {
   return now;
 }
 
-export function Delta({ cur, prev, invert }: { cur: number; prev: number; invert?: boolean }) {
-  if (!prev) return <span className="text-xs text-gray-400">no prior data</span>;
-  const p = pctChange(cur, prev);
+/**
+ * Small "▲ 8.2%" change vs the previous period. Green when good, red when bad;
+ * `invert` for lower-is-better metrics. `points` shows a point change (for rates already in %).
+ * Renders nothing when there is no prior data (prev 0 for amounts, NaN for rates).
+ */
+export function Delta({ cur, prev, invert, points }: { cur: number; prev: number; invert?: boolean; points?: boolean }) {
+  if (!Number.isFinite(cur) || !Number.isFinite(prev) || (!points && !prev)) return null;
+  const p = points ? cur - prev : pctChange(cur, prev);
   const good = invert ? p <= 0 : p >= 0;
-  const Icon = p >= 0 ? ArrowUpRight : ArrowDownRight;
   return (
-    <span className={cn('inline-flex items-center gap-0.5 text-xs font-medium', good ? 'text-green-600' : 'text-[#dc2626]')}>
-      <Icon className="w-3.5 h-3.5" strokeWidth={2} />
-      {Math.abs(p).toFixed(1)}% vs previous period
+    <span className={cn('inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums whitespace-nowrap', good ? 'text-[#1f6b3f]' : 'text-[#c8151d]')}
+      title={`vs previous period${points ? ' (points)' : ''}`}>
+      {p >= 0 ? '▲' : '▼'}{Math.abs(p).toFixed(1)}%
     </span>
   );
 }
 
-export function KpiCard({ title, value, sub, accent = 'border-l-[#c8151d]' }: { title: string; value: React.ReactNode; sub?: React.ReactNode; accent?: string }) {
-  return (
-    <div className={cn('bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5 border-l-4 min-w-0', accent)}>
-      <p className="text-xs sm:text-sm font-medium text-gray-500">{title}</p>
-      <p className="text-xl sm:text-2xl font-bold mt-1.5 text-[#c8151d] break-words">{value}</p>
-      {sub && <div className="mt-1">{sub}</div>}
-    </div>
-  );
-}
+const OUTLINE = 'inline-flex items-center justify-center gap-2 rounded-lg border border-[#e3d6cc] bg-white px-3.5 h-10 text-sm font-semibold text-[#1d1716] hover:bg-[#faf6f2]';
 
+/** CSV download + PDF (browser print). */
 export function ExportButtons({ onCsv }: { onCsv: () => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 print:hidden">
-      <Button variant="outline" size="sm" onClick={onCsv}>
-        <Download className="w-4 h-4" strokeWidth={1.75} /> Export CSV
-      </Button>
-      <Button variant="outline" size="sm" onClick={() => window.print()}>
-        <Printer className="w-4 h-4" strokeWidth={1.75} /> Export PDF
-      </Button>
-    </div>
+    <>
+      <button type="button" onClick={onCsv} className={OUTLINE}>
+        <Download className="w-4 h-4" strokeWidth={1.75} /> CSV
+      </button>
+      <button type="button" onClick={() => window.print()} className={OUTLINE}>
+        <FileText className="w-4 h-4" strokeWidth={1.75} /> PDF
+      </button>
+    </>
   );
 }
+export const outlineButtonClass = OUTLINE;
 
 /** Horizontal share bar used inside breakdown tables. */
 export function ShareBar({ value, max, color = '#c8151d' }: { value: number; max: number; color?: string }) {
   return (
-    <div className="h-1.5 rounded-full bg-gray-100 w-full min-w-16">
-      <div className="h-1.5 rounded-full" style={{ width: `${max ? Math.max(2, (value / max) * 100) : 0}%`, background: color }} />
+    <div className="h-2 rounded-full bg-[#f3ece6] w-full min-w-16">
+      <div className="h-2 rounded-full" style={{ width: `${max && value > 0 ? Math.max(1.5, (value / max) * 100) : 0}%`, background: color }} />
     </div>
   );
 }

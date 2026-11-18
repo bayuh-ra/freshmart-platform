@@ -5,7 +5,7 @@ import type {
 } from './types';
 
 // Bump when the seed shape changes: browsers holding an older version reseed once.
-export const STATE_VERSION = 24;
+export const STATE_VERSION = 26;
 
 // Deterministic pseudo-random so the seed looks the same on every reset.
 function rng(seed: number) {
@@ -608,16 +608,16 @@ const pick = (mods: string[], acts: string[]) => mods.flatMap((m) => acts.map((a
 
 // Phase 1 uses fixed roles: Admin and Cashier (riders sign in to the Rider App). Custom roles are Phase 2.
 const roles: Role[] = [
-  { id: 'role-super', name: 'Super Admin', description: 'Everything the plan allows: branch, catalog, prices, stock, riders, staff, settings, reports.', scopeType: 'all', protected: true, permissions: all },
-  { id: 'role-admin', name: 'Admin', description: 'Runs the branch: orders, products and prices, stock and Direct Receiving, riders, reports, refunds and approvals.', scopeType: 'branches', permissions: [...pick(['orders', 'catalog', 'pricing', 'inventory', 'riders', 'customers'], ['view', 'create', 'edit', 'approve', 'export']), 'reports.view', 'reports.export', 'settings.view', 'users.view'] },
-  { id: 'role-cashier', name: 'Cashier', description: 'Order Desk: view and confirm orders, enter actual weights, butcher prep, mark ready, assign riders, pickup handover. No prices or settings.', scopeType: 'branches', permissions: ['orders.view', 'orders.create', 'orders.edit', 'customers.view', 'catalog.view', 'riders.view', 'inventory.view'] },
+  { id: 'role-super', name: 'Super Admin', description: 'Everything: branches, catalog, prices, stock, riders, staff, settings, reports.', scopeType: 'all', protected: true, permissions: all },
+  { id: 'role-admin', name: 'Admin', description: 'Runs the branch: orders, products and prices, stock and receiving, riders, reports, refunds and approvals.', scopeType: 'branches', permissions: [...pick(['orders', 'catalog', 'pricing', 'inventory', 'riders', 'customers'], ['view', 'create', 'edit', 'approve', 'export']), 'reports.view', 'reports.export', 'settings.view', 'users.view'] },
+  { id: 'role-cashier', name: 'Cashier', description: 'Order desk: confirm orders, enter actual weights, butcher prep, mark ready, assign riders, pickup handover. No prices or settings.', scopeType: 'branches', permissions: ['orders.view', 'orders.create', 'orders.edit', 'customers.view', 'catalog.view', 'riders.view', 'inventory.view'] },
 ];
 
 const staff: StaffUser[] = [
-  { id: 'u-1', name: 'Hannah Admin', email: 'admin@jovannesmeatshop.ph', roleId: 'role-super', scope: { type: 'all', ids: [] }, status: 'active', lastActive: minsAgo(1), twoFactor: true },
-  { id: 'u-2', name: 'Mark Lim', email: 'mark.lim@jovannesmeatshop.ph', roleId: 'role-admin', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(4), twoFactor: true },
-  { id: 'u-3', name: 'Ana Cruz', email: 'ana.cruz@jovannesmeatshop.ph', roleId: 'role-cashier', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(2), twoFactor: false },
-  { id: 'u-4', name: 'Ben Torres', email: 'ben.torres@jovannesmeatshop.ph', roleId: 'role-cashier', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(8), twoFactor: false },
+  { id: 'u-1', name: 'Hannah Admin', email: 'admin@jovannesmeatshop.ph', roleId: 'role-super', scope: { type: 'all', ids: [] }, status: 'active', lastActive: minsAgo(8), twoFactor: true, passwordChangedAt: daysAgo(21, 9, 12), sessions: ['Windows laptop', 'iPhone'] },
+  { id: 'u-2', name: 'Mark Lim', email: 'mark.lim@jovannesmeatshop.ph', roleId: 'role-admin', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(11), twoFactor: true, passwordChangedAt: daysAgo(48, 14, 5), sessions: ['Android phone'] },
+  { id: 'u-3', name: 'Ana Cruz', email: 'ana.cruz@jovannesmeatshop.ph', roleId: 'role-cashier', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(9), twoFactor: false, passwordChangedAt: daysAgo(63, 8, 40), sessions: ['Order desk tablet'] },
+  { id: 'u-4', name: 'Ben Torres', email: 'ben.torres@jovannesmeatshop.ph', roleId: 'role-cashier', scope: { type: 'branches', ids: ['b-dgs'] }, status: 'active', lastActive: minsAgo(15), twoFactor: false, passwordChangedAt: daysAgo(35, 16, 20), sessions: ['Order desk tablet'] },
 ];
 
 const S = (s: Omit<Setting, 'city' | 'branch'> & Partial<Pick<Setting, 'city' | 'branch'>>): Setting => ({ city: {}, branch: {}, ...s });
@@ -629,6 +629,7 @@ const settings: Setting[] = [
   S({ key: 'codLimit', label: 'Cash on delivery limit', group: 'Payments', type: 'number', unit: '₱', global: 5000 }),
   S({ key: 'gatewayFeePct', label: 'Gateway fee charged to shopper', group: 'Payments', type: 'number', unit: '%', global: 2 }),
   S({ key: 'refundApprovalAbove', label: 'Refund manager approval above', group: 'Payments', type: 'number', unit: '₱', global: 1000 }),
+  S({ key: 'refundApprover', label: 'Who approves refunds above the limit', group: 'Payments', type: 'select', options: ['Admin or higher', 'Super Admin only'], global: 'Admin or higher' }),
   S({ key: 'minOrder', label: 'Minimum order amount', group: 'Order rules', type: 'number', unit: '₱', global: 500 }),
   S({ key: 'cancelWindowStatus', label: 'Shopper can cancel until', group: 'Order rules', type: 'select', options: ['Placed', 'Confirmed', 'Preparing'], global: 'Confirmed' }),
   S({ key: 'maxItems', label: 'Maximum items per order', group: 'Order rules', type: 'number', global: 60 }),
@@ -643,10 +644,13 @@ const settings: Setting[] = [
   S({ key: 'slotCapacity', label: 'Orders per delivery slot', group: 'Fulfillment', type: 'number', unit: 'orders', global: 8 }),
   S({ key: 'vatRate', label: 'VAT rate', group: 'Pricing & tax', type: 'number', unit: '%', global: 12 }),
   S({ key: 'pricesTaxInclusive', label: 'Show prices tax-inclusive', group: 'Pricing & tax', type: 'boolean', global: true }),
+  S({ key: 'priceApprovalPct', label: 'Price changes needing approval (up or down) above', group: 'Pricing & tax', type: 'number', unit: '%', global: 10 }),
+  S({ key: 'priceApprover', label: 'Who approves large price changes', group: 'Pricing & tax', type: 'select', options: ['Admin or higher', 'Super Admin only'], global: 'Admin or higher' }),
   S({ key: 'rounding', label: 'Price rounding', group: 'Pricing & tax', type: 'select', options: ['None', 'Nearest 0.25', 'Nearest 0.50', 'Nearest 1.00'], global: 'Nearest 0.25' }),
   S({ key: 'safetyBuffer', label: 'Online safety buffer (units held back)', group: 'Inventory', type: 'number', unit: 'units', global: 2 }),
   S({ key: 'lowStockThreshold', label: 'Low-stock alert threshold', group: 'Inventory', type: 'number', unit: 'units', global: 8 }),
   S({ key: 'adjustApprovalUnits', label: 'Manager approval for adjustments / count variances above', group: 'Inventory', type: 'number', unit: 'units', global: 5 }),
+  S({ key: 'adjustApprover', label: 'Who approves large stock adjustments', group: 'Inventory', type: 'select', options: ['Admin or higher', 'Super Admin only'], global: 'Admin or higher' }),
   S({ key: 'receivingApprovalAbove', label: 'Direct Receiving manager approval above', group: 'Inventory', type: 'number', unit: '₱', global: 20000 }),
   S({ key: 'dispatchRule', label: 'Rider suggestion order (manual assignment)', group: 'Riders', type: 'select', options: ['Nearest available', 'Lowest workload', 'Highest rating'], global: 'Nearest available' }),
   S({ key: 'maxActiveOrders', label: 'Max active orders per rider', group: 'Riders', type: 'number', global: 2 }),
@@ -656,6 +660,7 @@ const settings: Setting[] = [
   S({ key: 'insulatedBagRequired', label: 'Insulated bag required for meat orders', group: 'Meat & cold chain', type: 'boolean', global: true }),
   S({ key: 'sessionHours', label: 'Staff session length', group: 'Security', type: 'number', unit: 'hours', global: 12 }),
   S({ key: 'admin2fa', label: 'Require 2FA for admin roles', group: 'Security', type: 'boolean', global: true }),
+  S({ key: 'require2fa', label: 'Require 2FA for everyone', group: 'Security', type: 'boolean', global: false }),
 ];
 
 const banners: Banner[] = [
@@ -721,6 +726,40 @@ export function lineTotal(i: OrderItem) {
 
 const STATUS_FLOW: OrderStatus[] = ['placed', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
 const isCold = (items: OrderItem[]) => items.some((i) => i.storage === 'fresh' || i.storage === 'frozen');
+const ONLINE: PaymentMethod[] = ['gcash', 'maya', 'card'];
+
+/** Rider minutes on the road for a history order. Same hash as deliveryMins() on the Riders page, so its numbers don't move. */
+const roadMins = (id: string) => 18 + ([...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 997, 7) % 27);
+
+/** Full step-by-step timeline for a completed history order (Reports > Operations reads the stage times). */
+function historyTimeline(o: Order, rr: () => number): Pick<Order, 'timeline' | 'completedAt' | 'outForDeliveryAt'> {
+  let t = Date.parse(o.placedAt);
+  const at = (m: number) => { t += Math.round(m * 60_000); return iso(new Date(t)); };
+  const ev: Order['timeline'] = [{ status: 'placed', at: o.placedAt, by: o.customerName }];
+  if (o.status === 'cancelled') {
+    ev.push({ status: 'cancelled', at: at(4 + rr() * 16), by: 'Ana Cruz', note: o.rejectReason });
+    return { timeline: ev, completedAt: ev[1].at };
+  }
+  ev.push({ status: 'confirmed', at: at(1.5 + rr() * 6.5), by: o.autoConfirmed ? 'System (auto-confirm)' : 'Ana Cruz' });
+  ev.push({ status: 'preparing', at: at(1), by: 'Ana Cruz' });
+  ev.push({ status: 'ready', at: at(12 + rr() * 16), by: 'Ana Cruz' });
+  if (o.fulfillment === 'delivery') {
+    const out = at(3 + rr() * 12);
+    ev.push({ status: 'out_for_delivery', at: out, by: 'Rider' });
+    ev.push({ status: 'delivered', at: at(roadMins(o.id)), by: 'Rider' });
+    return { timeline: ev, completedAt: ev[ev.length - 1].at, outForDeliveryAt: out };
+  }
+  ev.push({ status: 'collected', at: at(10 + rr() * 50), by: 'Ana Cruz' });
+  return { timeline: ev, completedAt: ev[ev.length - 1].at };
+}
+
+/** Recompute an order's money after lines were marked out of stock at packing. */
+function reprice(o: Order) {
+  o.subtotal = Math.round(o.items.reduce((s, i) => s + lineTotal(i), 0) * 100) / 100;
+  o.serviceFee = ONLINE.includes(o.paymentMethod) ? Math.round(o.subtotal * 0.02) : 0;
+  o.total = o.subtotal + o.deliveryFee + o.serviceFee;
+  if (o.status === 'cancelled') o.refundedAmount = o.total;
+}
 
 function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
   const r = rng(42);
@@ -730,6 +769,47 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
   const b = branches[0];
   const payMethods: PaymentMethod[] = ['gcash', 'maya', 'card', 'cod', 'gcash', 'cod'];
   const sold = (i: OrderItem) => (i.soldByWeight ? Math.max(1, Math.round(i.actualWeightKg ?? i.estWeightKg ?? 1)) : i.qty);
+
+  // Older history (days 29-14) so Reports can compare 7 / 14 days with the period before.
+  // Own random stream and order numbers below 10200, so every later order keeps its number and values.
+  // No stock movements: the inventory ledger demo starts later. Kept to 16 days to stay well inside localStorage.
+  const ro = rng(2024);
+  let oldNum = 9900;
+  const CANCEL_REASONS = ['Customer requested cancellation', 'Customer requested cancellation', 'Item(s) out of stock', 'Address outside delivery zone'];
+  for (let d = 29; d >= 14; d--) {
+    const perDay = 13 + Math.floor(ro() * 8) + (d % 7 === 0 || d % 7 === 1 ? 5 : 0);
+    for (let k = 0; k < perDay; k++) {
+      const placed = daysAgo(d, 7 + Math.floor(ro() * 12), Math.floor(ro() * 60));
+      const pool = customers.slice(0, 10).filter((c) => c.createdAt < placed);
+      const cu = pool[Math.floor(ro() * pool.length)] ?? customers[0];
+      const ful: Fulfillment = ro() > 0.3 ? 'delivery' : 'pickup';
+      const pm: PaymentMethod = ful === 'pickup' && ro() > 0.5 ? 'pay_at_pickup' : payMethods[Math.floor(ro() * payMethods.length)];
+      const items = buildItems(ro, 2 + Math.floor(ro() * 4)).map((i) => ({ ...i, pickStatus: 'picked' as OrderItem['pickStatus'], actualWeightKg: i.soldByWeight ? Math.round((i.estWeightKg ?? 1) * (0.95 + ro() * 0.1) * 100) / 100 : undefined }));
+      for (const i of items) { const x = ro(); if (x < 0.005) i.pickStatus = 'out_of_stock'; else if (x < 0.01 && i.soldByWeight) i.pickStatus = 'short'; }
+      const subtotal = Math.round(items.reduce((s, i) => s + lineTotal(i), 0) * 100) / 100;
+      const fee = ful === 'delivery' ? (subtotal > 2500 ? 0 : 49 + Math.floor(ro() * 5) * 10) : 0;
+      const cancelled = ro() < 0.03;
+      const reason = CANCEL_REASONS[Math.floor(ro() * CANCEL_REASONS.length)];
+      const status: OrderStatus = cancelled ? 'cancelled' : ful === 'delivery' ? 'delivered' : 'collected';
+      const serviceFee = ONLINE.includes(pm) ? Math.round(subtotal * 0.02) : 0;
+      const total = subtotal + fee + serviceFee;
+      const id = `o-${oldNum}`;
+      const o: Order = {
+        id, number: `${b.code}-${oldNum++}`, branchId: b.id, customerId: cu.id, customerName: cu.name, customerMobile: cu.mobile,
+        channel: 'app', fulfillment: ful, address: ful === 'delivery' ? cu.addresses[0] : undefined,
+        slot: 'ASAP', items, subtotal, deliveryFee: fee, serviceFee, discount: 0, total,
+        paymentMethod: pm, paymentStatus: cancelled ? 'refunded' : 'paid', refundedAmount: cancelled ? total : 0,
+        status, autoConfirmed: ONLINE.includes(pm), riderId: ful === 'delivery' ? riders[Math.floor(ro() * 4)].id : undefined,
+        pickupPin: PIN(ro), prepMinutes: 25, placedAt: placed, updatedAt: placed, timeline: [], internalNotes: [],
+        rating: !cancelled && ro() > 0.4 ? { order: ro() > 0.2 ? 5 : ro() > 0.4 ? 4 : 3, rider: ro() > 0.2 ? 5 : 4, tags: [] } : undefined,
+        rejectReason: cancelled ? reason : undefined, acknowledged: true,
+        coldChain: isCold(items), maxDeliveryMins: ful === 'delivery' && isCold(items) ? 60 : undefined, insulatedPacked: true, riderBagConfirmed: ful === 'delivery' ? true : undefined,
+      };
+      Object.assign(o, historyTimeline(o, ro));
+      orders.push(o);
+    }
+  }
+  const recentFrom = orders.length;
 
   // History: last 13 days of completed orders for the dashboard and reports.
   for (let d = 13; d >= 1; d--) {
@@ -767,6 +847,25 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
         for (const i of items) saleMovements.push({ id: `ms-${id}-${i.productId}`, productId: i.productId, branchId: b.id, qty: -sold(i), type: 'online_sale', reason: 'Order completed', user: 'System', at: placed, ref: number });
       }
     }
+  }
+
+  // Give the 13-day history real stage times and a few short / out-of-stock lines. Done after the loop with its
+  // own random stream so the draws above (and every order number and total they produce) stay the same.
+  const rh = rng(7);
+  for (const o of orders.slice(recentFrom)) {
+    if (o.status !== 'cancelled') {
+      for (const i of o.items) {
+        const x = rh();
+        if (x < 0.005) i.pickStatus = 'out_of_stock';
+        else if (x < 0.01 && i.soldByWeight) i.pickStatus = 'short';
+      }
+      if (o.items.some((i) => i.pickStatus === 'out_of_stock')) {
+        reprice(o);
+        const gone = new Set(o.items.filter((i) => i.pickStatus === 'out_of_stock').map((i) => `ms-${o.id}-${i.productId}`));
+        for (let m = saleMovements.length - 1; m >= 0; m--) if (gone.has(saleMovements[m].id)) saleMovements.splice(m, 1);
+      }
+    }
+    Object.assign(o, historyTimeline(o, rh));
   }
 
   // Today: live orders across every status so the Order Desk demo is rich.

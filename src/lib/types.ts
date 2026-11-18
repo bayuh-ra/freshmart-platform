@@ -441,6 +441,10 @@ export interface StaffUser {
   status: 'active' | 'invited' | 'deactivated' | 'suspended';
   lastActive: string;
   twoFactor: boolean;
+  /** When the password was last set (ISO). */
+  passwordChangedAt?: string;
+  /** Signed-in devices, e.g. "Android phone". Empty after "Sign out everywhere". */
+  sessions?: string[];
 }
 
 export type SettingValue = string | number | boolean;
