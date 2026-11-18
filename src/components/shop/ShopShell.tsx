@@ -79,7 +79,7 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
     : !branch.services.delivery
       ? `${branch.name} branch is pickup-only — delivery is not offered here.`
       : deliveryPaused
-        ? `Delivery is temporarily paused at ${branch.name}.`
+        ? (branch.pausedMessage || `Delivery is temporarily paused at ${branch.name}.`)
         : outside
           ? 'This address is outside all of our delivery zones.'
           : !inZone

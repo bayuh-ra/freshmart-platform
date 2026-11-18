@@ -19,8 +19,9 @@ import {
 import { Textarea } from '@/src/components/ui/shadcn/textarea';
 import { addAudit, addNotification, currentUserName, mutate, useStore } from '@/src/lib/store';
 import { liveRiderPos, rankCandidates, useNow, workload } from '@/src/components/delivery/helpers';
+import { assignRiderNow, markOrderDelivered, startDelivery } from '@/src/components/delivery/actions';
 import {
-  CHANNEL_LABEL, ONLINE_METHODS, PAYMENT_LABEL, STATUS_LABEL, applyStatus, assignRider, can, confirmOrder, distanceKm,
+  CHANNEL_LABEL, ONLINE_METHODS, PAYMENT_LABEL, STATUS_LABEL, applyStatus, can, confirmOrder, distanceKm,
   cutCharge, cutFeeText, fmtDateTime, fmtTime, getSetting, isToday, lineTotal, num, onHand, peso, recalc, riderPosition, timeAgo,
 } from '@/src/lib/logic';
 import type { AppState, Order, OrderItem, OrderStatus, PaymentMethod } from '@/src/lib/types';
@@ -77,12 +78,6 @@ function editOrder(orderId: string, action: string, note: string, fn: (o: Order,
   });
 }
 
-/** Assign one of the shop's own riders (suggestion cards, Rider card "Assign" link and the Choose a rider drawer). */
-function assignRiderNow(s: AppState, o: Order, riderId: string, name: string) {
-  assignRider(o.id, riderId, currentUserName());
-  mutate((d) => addAudit(d, { module: 'Orders', action: 'Rider assigned', detail: `${o.number} → ${name}`, branchId: o.branchId, oldValue: s.riders.find((r) => r.id === o.riderId)?.name, newValue: name }));
-  toast.success(`${name} assigned`, { description: 'Job offer sent to the Rider App' });
-}
 
 export default function OrderDetailPage() {
   const s = useStore();
@@ -334,14 +329,8 @@ export default function OrderDetailPage() {
     toast.success(`${o.number} is ready`, { description: o.fulfillment === 'pickup' ? 'Shopper notified to pick up' : 'Choose a rider' });
     if (o.fulfillment === 'delivery' && !o.riderId) setRiderOpen(true);
   };
-  const outForDelivery = () => {
-    mutate((d) => { applyStatus(d, o.id, 'out_for_delivery', { note: `Handed to ${rider?.name}` }); addAudit(d, { module: 'Orders', action: 'Out for delivery', detail: `${o.number} · ${rider?.name}`, branchId: o.branchId }); });
-    toast.success('Out for delivery', { description: 'Live tracking active for the shopper' });
-  };
-  const markDelivered = () => {
-    mutate((d) => { applyStatus(d, o.id, 'delivered', { note: 'Delivery confirmed by branch' }); addAudit(d, { module: 'Orders', action: 'Marked delivered', detail: o.number, branchId: o.branchId }); });
-    toast.success(`${o.number} delivered`);
-  };
+  const outForDelivery = () => startDelivery(o, rider?.name);
+  const markDelivered = () => markOrderDelivered(o);
   const verifyPin = () => {
     if (pin.trim() === o.pickupPin) {
       setVerified(true);
@@ -569,8 +558,7 @@ export default function OrderDetailPage() {
     const bagOk = riderBagOk || !!o.riderBagConfirmed;
     const handOver = () => {
       if (!bagOk) return;
-      mutate((d) => { const x = d.orders.find((y) => y.id === o.id); if (x) x.riderBagConfirmed = true; });
-      outForDelivery();
+      startDelivery(o, rider.name, { bagChecked: true });
     };
     banner = (
       <>

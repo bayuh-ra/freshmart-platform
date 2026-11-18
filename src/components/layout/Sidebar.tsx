@@ -49,7 +49,7 @@ export const navModules: NavModule[] = [
     items: [
       { label: 'Dispatch Map', href: '/delivery/dispatch', icon: I(Navigation), perm: 'riders.view' },
       { label: 'Riders', href: '/delivery/riders', icon: I(Bike), perm: 'riders.view' },
-      { label: 'Zones & Fees', href: '/delivery/zones', icon: I(MapPinned), perm: 'settings.view' },
+      { label: 'Delivery zones', href: '/delivery/zones', icon: I(MapPinned), perm: 'settings.view' },
     ],
   },
   {

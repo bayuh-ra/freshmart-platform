@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Bike, Check, ChevronRight, CircleCheck, Clock, CreditCard, LoaderCircle, MapPin, MessageSquareText, Pencil, ShieldCheck, Snowflake, Store, Ticket, Trash2, TriangleAlert, Wallet } from 'lucide-react';
 import type { Fulfillment, PaymentMethod } from '@/src/lib/types';
 import { mutate } from '@/src/lib/store';
-import { applyVoucher, available, calcDeliveryFee, cutFeeText, getPriceInfo, getSetting, num, ONLINE_METHODS, PAYMENT_LABEL, peso, placeOrder, pesoShort } from '@/src/lib/logic';
+import { applyVoucher, available, calcDeliveryFee, cutFeeText, getPriceInfo, getSetting, num, ONLINE_METHODS, PAYMENT_LABEL, peso, placeOrder, pesoShort, slotBookable } from '@/src/lib/logic';
 import { moduleOn } from '@/src/lib/platform';
 import { cn } from '@/src/lib/utils';
 import {
@@ -214,7 +214,8 @@ export function CheckoutScreen() {
   const fulfillment: Fulfillment = ful === 'delivery' && !canDeliver ? 'pickup' : ful;
   const prep = num(getSetting(s, 'prepMinutes', branch.id)) || 20;
   const scheduledOn = getSetting(s, 'ff_scheduled', branch.id) !== false;
-  const slots = makeSlots(branch, fulfillment === 'delivery' ? 60 : prep);
+  // Delivery slots closed by staff or already full today are not offered (Delivery › Zones & fees).
+  const slots = makeSlots(branch, fulfillment === 'delivery' ? 60 : prep).filter((sl) => fulfillment !== 'delivery' || slotBookable(s, branch.id, sl));
   const [slot, setSlot] = useState('ASAP');
   const [instr, setInstr] = useState(address.landmark ? `Landmark: ${address.landmark}. ` : '');
   const [code, setCode] = useState(promosOn ? pendingVoucher : '');

@@ -17,18 +17,45 @@ export interface MapMarker {
   title?: string; // tooltip
   pulse?: boolean;
   onClick?: () => void;
+  /** Custom marker HTML (replaces the round pin); `size` is its box in px, anchored at the centre. */
+  html?: string;
+  size?: [number, number];
+  /** Popup HTML shown on click. */
+  popup?: string;
+  /** Stacking order among markers (higher = on top). */
+  z?: number;
 }
-export interface MapCircle { lat: number; lng: number; radiusKm: number; color?: string }
-export interface MapLine { points: [number, number][]; color?: string; dashed?: boolean }
+export interface MapCircle {
+  lat: number; lng: number; radiusKm: number; color?: string;
+  /** Optional styling (defaults: fill 0.07, weight 1.5, solid stroke). */
+  fillOpacity?: number; weight?: number; dashed?: boolean;
+  /** Draw a ring (annulus) from innerKm to radiusKm instead of a full disc. */
+  innerKm?: number;
+}
 
-export function MapView({ center, zoom = 13, markers = [], circles = [], lines = [], className = 'h-80', fitToMarkers = false }: {
+/** Points of a circle `km` around a centre (for annulus polygons). */
+function ring(lat: number, lng: number, km: number, steps = 72): [number, number][] {
+  const dLat = km / 111.32;
+  const dLng = km / (111.32 * Math.cos((lat * Math.PI) / 180));
+  return Array.from({ length: steps }, (_, i) => {
+    const a = (i / steps) * 2 * Math.PI;
+    return [lat + dLat * Math.sin(a), lng + dLng * Math.cos(a)] as [number, number];
+  });
+}
+export interface MapLine { points: [number, number][]; color?: string; dashed?: boolean; weight?: number; opacity?: number }
+
+export function MapView({ center, zoom = 13, markers = [], circles = [], lines = [], className = 'h-80', fitToMarkers = false, frameClass = 'rounded-xl border border-gray-200' }: {
   center: [number, number]; zoom?: number; markers?: MapMarker[]; circles?: MapCircle[]; lines?: MapLine[]; className?: string; fitToMarkers?: boolean;
+  /** Border/radius classes of the map box (pass '' when the map sits inside a card). */
+  frameClass?: string;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
   const L = useRef<typeof Leaflet | null>(null);
   const layer = useRef<Leaflet.LayerGroup | null>(null);
   const fitted = useRef(false);
+  /** Last drawn data; skip redraws when nothing changed (keeps open popups and tooltips alive). */
+  const drawn = useRef('');
 
   useEffect(() => {
     let cancelled = false;
@@ -52,17 +79,24 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], lines =
   function draw() {
     const lf = L.current;
     if (!lf || !layer.current || !map.current) return;
+    const sig = JSON.stringify([markers, circles, lines]);
+    if (sig === drawn.current) return;
+    drawn.current = sig;
     layer.current.clearLayers();
     for (const c of circles) {
-      lf.circle([c.lat, c.lng], { radius: c.radiusKm * 1000, color: c.color ?? '#c8151d', weight: 1.5, fillOpacity: 0.07 }).addTo(layer.current);
+      const style = { color: c.color ?? '#c8151d', weight: c.weight ?? 1.5, fillOpacity: c.fillOpacity ?? 0.07, dashArray: c.dashed ? '6 6' : undefined };
+      if (c.innerKm && c.innerKm > 0) lf.polygon([ring(c.lat, c.lng, c.radiusKm), ring(c.lat, c.lng, c.innerKm)], style).addTo(layer.current);
+      else lf.circle([c.lat, c.lng], { radius: c.radiusKm * 1000, ...style }).addTo(layer.current);
     }
     for (const l of lines) {
-      lf.polyline(l.points, { color: l.color ?? '#c8151d', weight: 3, dashArray: l.dashed ? '6 6' : undefined }).addTo(layer.current);
+      lf.polyline(l.points, { color: l.color ?? '#c8151d', weight: l.weight ?? 3, opacity: l.opacity ?? 1, dashArray: l.dashed ? '6 6' : undefined }).addTo(layer.current);
     }
     for (const m of markers) {
-      const html = `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:${m.color ?? '#c8151d'};color:#fff;font-size:16px;font-weight:700;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">${m.pulse ? `<span class="rider-pulse" style="position:absolute;inset:-3px;border-radius:999px;border:3px solid ${m.color ?? '#c8151d'}"></span>` : ''}${m.label}</div>`;
-      const mk = lf.marker([m.lat, m.lng], { icon: lf.divIcon({ html, className: '', iconSize: [34, 34], iconAnchor: [17, 17] }) }).addTo(layer.current);
+      const size = m.size ?? [34, 34];
+      const html = m.html ?? `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:${m.color ?? '#c8151d'};color:#fff;font-size:16px;font-weight:700;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">${m.pulse ? `<span class="rider-pulse" style="position:absolute;inset:-3px;border-radius:999px;border:3px solid ${m.color ?? '#c8151d'}"></span>` : ''}${m.label}</div>`;
+      const mk = lf.marker([m.lat, m.lng], { icon: lf.divIcon({ html, className: '', iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] }), zIndexOffset: m.z ?? 0 }).addTo(layer.current);
       if (m.title) mk.bindTooltip(m.title);
+      if (m.popup) mk.bindPopup(m.popup, { closeButton: false });
       if (m.onClick) mk.on('click', m.onClick);
     }
     if (fitToMarkers && !fitted.current && markers.length > 1) {
@@ -75,5 +109,5 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], lines =
     draw();
   });
 
-  return <div ref={el} className={`w-full rounded-xl overflow-hidden border border-gray-200 z-0 ${className}`} />;
+  return <div ref={el} className={`w-full overflow-hidden z-0 ${frameClass} ${className}`} />;
 }

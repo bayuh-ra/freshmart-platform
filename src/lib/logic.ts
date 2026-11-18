@@ -173,7 +173,13 @@ export function findZone(s: AppState, branch: Branch, addr?: { lat: number; lng:
   const zs = s.zones.filter((z) => z.branchId === branch.id && z.active).sort((a, b) => a.radiusKm - b.radiusKm);
   if (!addr) return zs[0];
   const d = distanceKm(branch, addr);
-  return zs.find((z) => d <= z.radiusKm);
+  // Innermost active zone whose ring (fromKm–radiusKm) contains the distance.
+  return zs.find((z) => d >= (z.fromKm ?? 0) && d <= z.radiusKm);
+}
+
+/** Base + per-km fee of a distance zone at `d` km (no surcharges or free-delivery threshold). */
+export function zoneDistanceFee(z: Pick<DeliveryZone, 'baseFee' | 'perKm'>, d: number) {
+  return Math.round(z.baseFee + z.perKm * d);
 }
 
 export function calcDeliveryFee(s: AppState, branchId: string, subtotal: number, addr?: { lat: number; lng: number }) {
@@ -184,7 +190,7 @@ export function calcDeliveryFee(s: AppState, branchId: string, subtotal: number,
   let fee = 0;
   let rule = '';
   if (zone.feeModel === 'flat') { fee = zone.flatFee; rule = `${zone.name} · Flat ${pesoShort(zone.flatFee)}`; }
-  else if (zone.feeModel === 'distance') { fee = Math.round(zone.baseFee + zone.perKm * d); rule = `${zone.name} · ${pesoShort(zone.baseFee)} + ${pesoShort(zone.perKm)}/km × ${d} km`; }
+  else if (zone.feeModel === 'distance') { fee = zoneDistanceFee(zone, d); rule = `${zone.name} · ${pesoShort(zone.baseFee)} + ${pesoShort(zone.perKm)}/km × ${d} km`; }
   else { fee = subtotal >= 2000 ? 0 : subtotal >= 1000 ? 39 : zone.flatFee; rule = `${zone.name} · Order-value tiers`; }
   const hour = new Date().getHours();
   const peak = num(getSetting(s, 'peakSurcharge', branchId));
@@ -193,6 +199,65 @@ export function calcDeliveryFee(s: AppState, branchId: string, subtotal: number,
   if (weather) { fee += weather; rule += ` + weather ${pesoShort(weather)}`; }
   if (zone.freeAbove && subtotal >= zone.freeAbove) { fee = 0; rule += ` · Free above ${pesoShort(zone.freeAbove)}`; }
   return { fee, rule, zone, outside: false, distance: d };
+}
+
+// ---------------- Delivery slots ----------------
+export const DEFAULT_SLOT_CAPACITY = 8;
+export function slotCapacity(s: AppState, branchId: string) {
+  return num(getSetting(s, 'slotCapacity', branchId)) || DEFAULT_SLOT_CAPACITY;
+}
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** Key of an hourly delivery slot in `closedSlots`. */
+export function slotKey(branchId: string, day: Date, hour: number) {
+  return `${branchId}|${ymd(day)}|${hour}`;
+}
+/** Start hour (0–23) and day of a slot label such as "Today 2:00–3:00 PM". */
+export function parseSlot(label: string): { day: 'Today' | 'Tomorrow'; hour: number } | undefined {
+  const m = label.match(/^(Today|Tomorrow)\s+\d+:\d+\s*[–-]\s*(\d+):\d+\s*(AM|PM)/i);
+  if (!m) return undefined;
+  const end = (+m[2] % 12) + (m[3].toUpperCase() === 'PM' ? 12 : 0);
+  return { day: m[1] === 'Tomorrow' ? 'Tomorrow' : 'Today', hour: (end + 23) % 24 };
+}
+/** Opening and closing hour from branch hours like "6:00 AM – 8:00 PM". */
+export function branchOpenHours(b: Branch) {
+  const m = b.hours.match(/(\d+):\d+\s*(AM|PM)\s*[–-]\s*(\d+):\d+\s*(AM|PM)/i);
+  const to24 = (h: number, ap: string) => (h % 12) + (ap.toUpperCase() === 'PM' ? 12 : 0);
+  return m ? { open: to24(+m[1], m[2]), close: to24(+m[3], m[4]) } : { open: 8, close: 20 };
+}
+/**
+ * Demo bookings so the slot board looks lived-in: the current slot is full, the next has 1 left,
+ * then 3 left, then full, and so on. Deterministic per hour; past slots read as mostly full.
+ */
+const DEMO_LEFT = [0, 1, 3, 0, 3, 2, 4, 5, 3, 6, 4, 6];
+function demoBooked(hour: number, nowHour: number, cap: number) {
+  const k = hour - nowHour;
+  if (k < 0) return Math.max(0, cap - (hour % 3));
+  return Math.max(0, cap - DEMO_LEFT[k % DEMO_LEFT.length]);
+}
+/** Bookings, capacity and state of today's hourly delivery slot starting at `hour`. */
+export function slotInfo(s: AppState, branchId: string, hour: number, now = new Date()) {
+  const cap = slotCapacity(s, branchId);
+  const today = ymd(now);
+  const yesterday = ymd(new Date(now.getTime() - 86_400_000));
+  const real = s.orders.filter((o) => {
+    if (o.branchId !== branchId || o.fulfillment !== 'delivery' || o.status === 'cancelled') return false;
+    const p = parseSlot(o.slot);
+    if (!p || p.hour !== hour) return false;
+    const placed = ymd(new Date(o.placedAt));
+    return p.day === 'Today' ? placed === today : placed === yesterday;
+  }).length;
+  const booked = real + demoBooked(hour, now.getHours(), cap);
+  const closed = (s.closedSlots ?? []).includes(slotKey(branchId, now, hour));
+  const past = hour < now.getHours();
+  const left = Math.max(0, cap - booked);
+  return { hour, cap, booked, left, closed, past, now: hour === now.getHours(), full: left === 0 };
+}
+/** Whether a shopper can still book this delivery slot label (closed or full today's slots are not). */
+export function slotBookable(s: AppState, branchId: string, label: string, now = new Date()) {
+  const p = parseSlot(label);
+  if (!p || p.day !== 'Today') return true;
+  const i = slotInfo(s, branchId, p.hour, now);
+  return !i.closed && !i.full;
 }
 
 /** Nearest open branch that delivers to this address (auto branch selection). */

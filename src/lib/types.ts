@@ -115,12 +115,20 @@ export interface Receiving {
   branchId: ID;
   supplierId?: ID;
   supplierName: string;
-  receiptNo: string; // supplier delivery receipt number
+  receiptNo: string; // supplier delivery receipt (DR) number, e.g. DR-55120
   hasPhoto: boolean;
+  /** Receipt photo URL or data URL, when one was stored. */
+  photo?: string;
   at: string;
-  by: string;
+  by: string; // received by
   note?: string;
-  status: 'posted' | 'pending_approval';
+  /** awaiting = above the approval limit, no stock added yet; rejected = never added to stock. */
+  status: 'posted' | 'awaiting' | 'rejected';
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectReason?: string;
   lines: { productId: ID; qty: number; weightKg?: number; cost: number; batch: string; producedOn?: string; expiresOn?: string }[];
 }
 
@@ -185,9 +193,15 @@ export interface Transfer {
   number: string;
   fromBranchId: ID;
   toBranchId: ID;
-  status: 'requested' | 'approved' | 'dispatched' | 'received';
+  /** requested → (approved) → dispatched → received, or cancelled when a request is declined. */
+  status: 'requested' | 'approved' | 'dispatched' | 'received' | 'cancelled';
   createdAt: string;
   lines: { productId: ID; qty: number }[];
+  /** Branch that started it: the receiving branch for a request, the sending branch for a send. Missing on older records (treated as toBranchId). */
+  requestedBy?: ID;
+  note?: string;
+  /** Status changes after creation, oldest first (drawer timeline). */
+  history?: { status: 'requested' | 'approved' | 'dispatched' | 'received' | 'cancelled'; at: string; by: string }[];
 }
 
 export interface Address {
@@ -212,6 +226,8 @@ export interface Customer {
   points: number;
   source: 'app' | 'walk_in' | 'phone';
   group?: string;
+  /** Staff-only note shown on the Customers page (e.g. "Prefers thin-cut liempo"). */
+  note?: string;
   firstName?: string;
   lastName?: string;
   username?: string;
@@ -336,6 +352,15 @@ export interface Rider {
   tripsToday: number;
   earningsToday: number;
   documents: { name: string; expires: string; status: 'approved' | 'pending' | 'expired' }[];
+  /** Date the rider joined the shop (demo data). */
+  joinedAt?: string;
+  /** Rolling 7-day performance (demo data; the Rider App would report this). */
+  stats7d?: { trips: number; onTimePct: number; avgMins: number; acceptancePct: number };
+  /** On-time % of today's trips (demo data). */
+  onTimeToday?: number;
+  /** When the oldest unremitted COD cash was collected, and from how many orders (demo data). */
+  codSince?: string;
+  codOrders?: number;
 }
 
 export interface DeliveryZone {
@@ -343,6 +368,8 @@ export interface DeliveryZone {
   branchId: ID;
   name: string;
   type: 'radius' | 'areas';
+  /** Inner edge of the ring in km (default 0). The zone covers fromKm ≤ distance ≤ radiusKm. */
+  fromKm?: number;
   radiusKm: number;
   areas?: string[];
   feeModel: 'flat' | 'distance' | 'tiers';
@@ -552,6 +579,56 @@ export interface AppState {
   receivings: Receiving[];
   /** Catalog Import / export history (the demo keeps each file's text so it can be downloaded again). */
   catalogFiles?: CatalogFile[];
+  /** Finished stock takes, newest first (Inventory › Stock take › Recent counts). */
+  stockCounts?: StockCount[];
+  /** The physical count in progress, if any. Kept here so it survives reloads and tab switches. */
+  stockCountDraft?: StockCountDraft;
+  /** COD cash handed over by riders (Riders › COD remittance), newest first. */
+  remittances?: CodRemittance[];
+  /** Delivery slots closed by staff (Delivery › Zones & fees), keyed `branchId|YYYY-MM-DD|hour`. */
+  closedSlots?: string[];
+}
+
+/** One COD hand-over from a rider to the branch. */
+export interface CodRemittance {
+  id: ID;
+  riderId?: ID;
+  riderName: string;
+  amount: number;
+  method: 'cash' | 'gcash';
+  /** Number of COD orders covered. */
+  orders: number;
+  at: string;
+  by: string;
+  /** Amount still held after this hand-over (shortfall), if any. */
+  shortBy?: number;
+}
+
+/** One submitted stock take. */
+export interface StockCount {
+  id: ID;
+  branchId: ID;
+  /** 'all' or a top-level category id. */
+  scope: string;
+  scopeName: string;
+  startedAt?: string; // ISO
+  at: string; // ISO, when submitted
+  by: string;
+  counted: number;
+  variances: number;
+  /** Net variance at cost price (₱); negative = stock missing. */
+  value: number;
+}
+
+/** A stock take that has been started but not submitted. */
+export interface StockCountDraft {
+  branchId: ID;
+  /** 'all' or a top-level category id. */
+  scope: string;
+  startedAt: string; // ISO
+  startedBy: string;
+  /** Counted quantity per product id, as typed. Products without an entry are not counted yet. */
+  counts: Record<ID, string>;
 }
 
 /** One file imported into or exported from the catalog. */
