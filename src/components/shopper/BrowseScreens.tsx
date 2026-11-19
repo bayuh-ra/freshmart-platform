@@ -23,8 +23,6 @@ function saveRecent(list: string[]) {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 6))); } catch { /* ignore */ }
 }
 
-const MEAT_TILE_COLORS = ['from-[#7d0d12] to-[#c8151d]', 'from-[#2a2322] to-[#54433f]', 'from-[#6b4329] to-[#ae754d]'];
-
 // ====================== HOME ======================
 /** Home page column — as wide as the shop header and footer. */
 const WIDE = 'max-w-[1280px]';
@@ -189,7 +187,7 @@ export function HomeScreen() {
           </div>
         </div>
         {shown.length === 0 ? (
-          <p className="py-10 text-center text-sm text-gray-500">Nothing here yet. <Link href="/category" className="font-semibold text-[#c8151d] hover:underline">Browse all products</Link></p>
+          <p className="py-10 text-center text-sm text-gray-500">Nothing here yet. <Link href="/products" className="font-semibold text-[#c8151d] hover:underline">Browse all products</Link></p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 gap-2.5 md:gap-3" role="tabpanel">
             {shown.map((p) => <PopularCard key={p.id} p={p} />)}
@@ -299,42 +297,72 @@ function PopularCard({ p }: { p: Product }) {
 }
 
 // ====================== ALL CATEGORIES ======================
+/** Category overview: one card per top category (photo header, subcategory list, "Shop all" link). */
 export function CategoriesScreen() {
   const { s, branch } = useShop();
   const active = s.products.filter((p) => shopVisible(s, p));
   const countIn = (id: string) => active.filter((p) => inShopCategory(s, p, id)).length;
   const tops = orderedTopCategories(s);
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   return (
-    <Container className="pb-6">
-      <ScreenHeader title="Categories" sub={`${active.length} products at ${branch.name} branch`} back={false}
-        right={<Link href="/search" className="md:hidden w-11 h-11 rounded-full bg-white border border-[#eadfd6] flex items-center justify-center" aria-label="Search"><Search className="w-5 h-5" /></Link>} />
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 md:gap-4">
-        {tops.map((c, i) => {
+    <Container className={cn(WIDE, 'pb-6')}>
+      <div className="pt-5 pb-4 md:pt-8 md:pb-5 mb-5 md:mb-8 border-b border-[#e6dbd2]">
+        <h1 className="text-2xl md:text-[30px] font-bold text-[#2a2322] leading-tight">Shop by category</h1>
+        <p className="mt-1 text-sm md:text-[15px] text-gray-500">{plural(active.length, 'product')} across {tops.length} {tops.length === 1 ? 'category' : 'categories'} · {branch.name} branch</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+        {tops.map((c) => {
           const kids = s.categories.filter((k) => k.parentId === c.id && !k.hidden).sort((a, b) => a.sort - b.sort);
+          const href = `/category/${c.id}`;
           return (
-            <Card key={c.id} className="overflow-hidden">
-              <Link href={`/category/${c.id}`} className="w-full flex items-center gap-3 p-3 md:p-4 text-left hover:bg-[#fdf8f4]">
-                <span className={cn('w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0', i < 3 ? 'bg-gradient-to-br text-white ' + MEAT_TILE_COLORS[i] : 'bg-[#f6ece4]')} aria-hidden>{c.icon}</span>
-                <span className="flex-1 min-w-0">
-                  <span className="block font-display uppercase tracking-wide text-lg font-semibold">{c.name}</span>
-                  <span className="block text-xs text-gray-500">{countIn(c.id)} items</span>
+            <article key={c.id} className="bg-[#fffdfb] rounded-lg border border-[#eadfd6] overflow-hidden flex flex-col min-w-0">
+              <Link href={href} className="group relative block h-[170px] md:h-[190px] bg-[#f6ece4] overflow-hidden">
+                {c.photo
+                  ? <PhotoImg image={c.photo} fill className="transition-transform duration-300 group-hover:scale-105" />
+                  : <span className="absolute inset-0 flex items-center justify-center text-6xl" aria-hidden>{c.icon}</span>}
+                <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 via-45% to-transparent" aria-hidden />
+                <span className="absolute inset-x-0 bottom-0 px-5 pb-4 flex items-end gap-3">
+                  <span className="flex-1 min-w-0 text-white">
+                    <h2 className="text-[26px] md:text-[28px] font-bold leading-tight truncate">{c.name}</h2>
+                    <span className="block text-sm font-medium text-white/90">{plural(countIn(c.id), 'product')}</span>
+                  </span>
+                  <span className="mb-1 w-10 h-10 rounded-full bg-white text-[#2a2322] flex items-center justify-center shrink-0 shadow-md transition group-hover:bg-[#c8151d] group-hover:text-white" aria-hidden>
+                    <ArrowRight className="w-[18px] h-[18px]" />
+                  </span>
                 </span>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
               </Link>
-              {kids.length > 0 && (
-                <div className="border-t border-[#f1e8e1] pl-[84px]">
-                  {kids.map((k) => (
-                    <Link key={k.id} href={`/category/${k.id}`} className="w-full flex items-center justify-between pr-4 min-h-11 text-left border-b border-[#f6efe9] last:border-0 hover:text-[#c8151d]">
-                      <span className="text-sm text-gray-700">{k.icon} {k.name}</span>
-                      <span className="text-xs text-gray-500">{countIn(k.id)}</span>
+              <ul className="flex-1 px-5 pt-1 pb-4 grid grid-cols-2 gap-x-5 content-start">
+                {kids.map((k) => (
+                  <li key={k.id} className="min-w-0">
+                    <Link href={`/category/${k.id}`} className="flex items-center justify-between gap-2 min-h-[52px] py-2 border-b border-[#eadfd6] text-sm md:text-[15px] text-[#2a2322] hover:text-[#c8151d]">
+                      <span className="min-w-0 leading-snug">{k.name}</span>
+                      <span className="shrink-0 text-xs text-gray-500 tabular-nums">{countIn(k.id)}</span>
                     </Link>
-                  ))}
-                </div>
-              )}
-            </Card>
+                  </li>
+                ))}
+              </ul>
+              <div className="border-t border-[#eadfd6] bg-[#faf6f2] px-5 py-3.5">
+                <Link href={href} className="inline-flex items-center gap-1.5 min-h-8 text-sm md:text-[15px] font-semibold text-[#c8151d] hover:underline">
+                  Shop all {c.name.toLowerCase()} <ArrowRight className="w-4 h-4" aria-hidden />
+                </Link>
+              </div>
+            </article>
           );
         })}
       </div>
+    </Container>
+  );
+}
+
+// ====================== ALL PRODUCTS ======================
+/** Every product on sale at the current branch, with the same filters and sorting as a category page. */
+export function AllProductsScreen() {
+  const { s, branch } = useShop();
+  const active = s.products.filter((p) => shopVisible(s, p));
+  return (
+    <Container className="pb-6">
+      <ScreenHeader title="All products" sub={`${active.length} products at ${branch.name} branch`} back="/" />
+      <FilteredProducts products={active} q="" />
     </Container>
   );
 }

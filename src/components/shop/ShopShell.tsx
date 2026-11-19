@@ -255,7 +255,12 @@ function SiteHeader({ ctx, pathname, cartCount }: { ctx: ShopCtx; pathname: stri
   const cartLabel = `Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}`;
   // Signed-in customers see the estimated cart subtotal on the cart button; guests see "Cart".
   const cartTotal = shopper && cartCount > 0 ? pesoShort(cartEstimate(s, branch.id)) : '';
-  const navItems = [{ id: '', name: 'All products', href: '/category' }, ...cats.map((c) => ({ id: c.id, name: c.name, href: `/category/${c.id}` }))];
+  // "Categories" is the overview page, "All products" the full listing; each category tab links to its own page.
+  const navItems = [
+    { name: 'Categories', href: '/category' },
+    { name: 'All products', href: '/products' },
+    ...cats.map((c) => ({ name: c.name, href: `/category/${c.id}` })),
+  ];
   return (
     <>
       {/* Top strip (tablet / desktop; scrolls away) */}
@@ -327,7 +332,7 @@ function SiteHeader({ ctx, pathname, cartCount }: { ctx: ShopCtx; pathname: stri
           <Container className={cn(WIDE, 'px-0 md:px-6')}>
             <nav className="flex items-stretch gap-1 h-11 overflow-x-auto fm-noscroll px-2 md:px-0" aria-label="Categories">
               {navItems.map((c) => {
-                const active = c.id ? pathname === c.href : pathname === '/' || pathname === '/category';
+                const active = pathname === c.href;
                 return (
                   <Link key={c.href} href={c.href} aria-current={active ? 'page' : undefined}
                     className={cn('px-3 shrink-0 whitespace-nowrap text-[13px] flex items-center border-b-2 transition',
