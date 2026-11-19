@@ -6,7 +6,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Minus, Phone, Plus, Snowflake, X } from 'lucide-react';
-import type { Address, AppState, Branch, CartLine, Customer, CutOption, Fulfillment, Product, SubstitutionPref } from '@/src/lib/types';
+import type { Address, AppState, Branch, CartLine, Customer, CutOption, Fulfillment, Order, Product, SubstitutionPref } from '@/src/lib/types';
 import { mutate } from '@/src/lib/store';
 import { available, cutCharge, getPriceInfo, getSetting, num, peso } from '@/src/lib/logic';
 import { cn } from '@/src/lib/utils';
@@ -304,6 +304,41 @@ export function cartUpdate(key: string, patch: { qty?: number; weightKg?: number
 }
 export function cartRemove(key: string) {
   mutate((d) => { d.cart = d.cart.filter((c) => lineKey(c) !== key); });
+}
+
+/** Estimated cart subtotal at a branch (available lines only) — same line formula as the cart page. */
+export function cartEstimate(s: AppState, branchId: string) {
+  let sum = 0;
+  for (const c of s.cart) {
+    const p = s.products.find((x) => x.id === c.productId);
+    if (!p || p.status !== 'active') continue;
+    const avail = available(s, p.id, branchId);
+    if (avail <= 0) continue;
+    const amount = p.soldByWeight ? lineWeight(c, p) : Math.min(c.qty, avail);
+    sum += lineEst(p, getPriceInfo(s, p.id, branchId).price, amount, cutById(s, c.cutId));
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+/** Put a past order's items back in the cart. Items that are no longer sold or out of stock at the branch are skipped. */
+export function reorderToCart(o: Order, branchId: string) {
+  const added: string[] = [];
+  const flagged: string[] = [];
+  mutate((d) => {
+    for (const i of o.items) {
+      const p = d.products.find((x) => x.id === i.productId);
+      if (!p || p.status !== 'active' || available(d, p.id, branchId) <= 0) { flagged.push(i.name); continue; }
+      const cutId = i.cut && cutsFor(d, p).some((c) => c.id === i.cut!.id) ? i.cut.id : undefined;
+      const kg = p.soldByWeight ? i.estWeightKg ?? (p.estWeightKg ?? 1) * i.qty : undefined;
+      const l = d.cart.find((c) => lineKey(c) === lineKey({ productId: p.id, cutId }));
+      if (l) {
+        if (kg !== undefined) l.weightKg = roundKg((l.weightKg ?? 0) + kg);
+        else l.qty += i.qty;
+      } else d.cart.push({ productId: p.id, qty: p.soldByWeight ? 1 : i.qty, weightKg: kg !== undefined ? roundKg(kg) : undefined, cutId, note: i.note, subPref: DEFAULT_SUB_PREF });
+      added.push(i.name);
+    }
+  });
+  return { added, flagged };
 }
 
 // ---------- Layout atoms ----------

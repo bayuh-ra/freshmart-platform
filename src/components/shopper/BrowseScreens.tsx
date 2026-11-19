@@ -3,17 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Bell, BellRing, ChevronDown, ChevronLeft, ChevronRight, Clock, MapPin, Scale, Search, ShieldCheck, ShoppingCart, Snowflake, Store, TriangleAlert, X } from 'lucide-react';
-import type { Product } from '@/src/lib/types';
-import { available, cutFeeText, distanceKm, getPriceInfo, peso } from '@/src/lib/logic';
+import { ArrowRight, Beef, Bell, BellRing, ChevronLeft, ChevronRight, Clock, Drumstick, Ham, Scale, RotateCcw, Search, ShieldCheck, ShoppingCart, Slice, Snowflake, Timer, TriangleAlert, X } from 'lucide-react';
+import type { Order, Product } from '@/src/lib/types';
+import { available, cutFeeText, distanceKm, getPriceInfo, lineTotal, peso, pesoShort, STATUS_LABEL } from '@/src/lib/logic';
 import { cn } from '@/src/lib/utils';
-import { Cleavers } from '@/src/components/shop/Cleavers';
 import {
   Card, Container, MEAT_CAT_IDS, MobileActionBar, PrimaryButton, ProductGrid, ProductImage, ProductRow, ProductTile, ScreenHeader, SectionTitle, Stepper, StorageBadge,
   cartAdd, cartCutFee, cartUpdate, cutById, cutsFor, defaultKg, fmtKg, lineEst, lineKey, lineWeight, matchScore, meatMaxMins, minKg, orderedTopCategories, popularity, roundKg,
-  useDocumentTitle, useShop, shopVisible, inShopCategory, categoryHidden,
+  reorderToCart, useDocumentTitle, useShop, shopVisible, inShopCategory, categoryHidden,
 } from './shared';
 import { ProductImage as PhotoImg } from '@/src/components/ProductImage';
+import { useStockAlert } from './accountHelpers';
 
 const RECENT_KEY = 'fm-shopper-recent-searches';
 function loadRecent(): string[] {
@@ -26,93 +26,82 @@ function saveRecent(list: string[]) {
 const MEAT_TILE_COLORS = ['from-[#7d0d12] to-[#c8151d]', 'from-[#2a2322] to-[#54433f]', 'from-[#6b4329] to-[#ae754d]'];
 
 // ====================== HOME ======================
+/** Home page column — as wide as the shop header and footer. */
+const WIDE = 'max-w-[1280px]';
+const HERO_ICON: Record<string, typeof Beef> = { 'cat-beef': Beef, 'cat-pork': Ham, 'cat-chicken': Drumstick };
+type PopularTab = 'best' | 'featured' | 'frozen';
+const POPULAR_TABS: { id: PopularTab; label: string }[] = [
+  { id: 'best', label: 'Best sellers' },
+  { id: 'featured', label: 'Featured' },
+  { id: 'frozen', label: 'Frozen & house-made' },
+];
+const POPULAR_LIMIT = 14;
+
 export function HomeScreen() {
-  const { s, shopper, branch, address, effMode, mode, deliveryOk, deliveryBlockReason, pickupBranch, setMode, setBranchOverride, openLocation } = useShop();
+  const { s, shopper, branch, address, mode, deliveryOk, deliveryBlockReason, pickupBranch, setMode, setBranchOverride, openLocation } = useShop();
+  const lastOrder = shopper ? s.orders.filter((o) => o.customerId === shopper.id).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0] : undefined;
+  const [tab, setTab] = useState<PopularTab>('best');
   const products = s.products.filter((p) => shopVisible(s, p));
-  const featured = products.filter((p) => p.featured);
-  const buyAgain = useMemo(() => {
-    if (!shopper) return [];
-    const ids: string[] = [];
-    s.orders.filter((o) => o.customerId === shopper.id).forEach((o) => o.items.forEach((i) => { if (!ids.includes(i.productId)) ids.push(i.productId); }));
-    return ids.map((id) => s.products.find((p) => p.id === id && shopVisible(s, p))).filter(Boolean).slice(0, 10) as Product[];
-  }, [s, shopper]);
-  const promos = products.filter((p) => { const i = getPriceInfo(s, p.id, branch.id); return !!i.compareAt && i.compareAt > i.price; });
   const tops = orderedTopCategories(s);
-  // Meat first: Beef, Pork, Chicken get the big tiles; everything else sits below.
   const meatCats = tops.filter((c) => MEAT_CAT_IDS.includes(c.id));
-  const bigCats = meatCats.length ? meatCats : tops.slice(0, 3);
-  const otherCats = tops.filter((c) => !bigCats.includes(c));
-  const catIdsUnder = (id: string) => [id, ...s.categories.filter((c) => c.parentId === id).map((c) => c.id)];
-  const meatIds = bigCats.flatMap((c) => catIdsUnder(c.id));
-  const isMeat = (p: Product) => meatIds.includes(p.categoryId);
+  const heroCats = meatCats.length ? meatCats : tops.slice(0, 3);
   const pop = useMemo(() => popularity(s), [s]);
-  const bestMeat = products.filter((p) => isMeat(p) && (pop[p.id] ?? 0) > 0).sort((a, b) => (pop[b.id] ?? 0) - (pop[a.id] ?? 0)).slice(0, 10);
-  const featuredMeat = [...featured.filter(isMeat), ...featured.filter((p) => !isMeat(p))];
   const coldMins = meatMaxMins(s, branch.id);
-  const unread = shopper ? s.notifications.filter((n) => n.audience === 'shopper' && n.targetId === shopper.id && !n.read).length : 0;
-  const firstName = shopper ? shopper.firstName || shopper.name.split(' ')[0] : '';
-  const hour = new Date().getHours();
-  const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  // Popular this week: best sellers by units ordered (topped up with featured items), featured, or processed / frozen.
+  const featured = products.filter((p) => p.featured);
+  const sold = products.filter((p) => (pop[p.id] ?? 0) > 0).sort((a, b) => (pop[b.id] ?? 0) - (pop[a.id] ?? 0));
+  const best = [...sold, ...featured.filter((p) => !sold.includes(p))];
+  const frozen = products.filter((p) => inShopCategory(s, p, 'cat-processed') || p.storage === 'frozen');
+  const shown = (tab === 'best' ? best : tab === 'featured' ? featured : frozen).slice(0, POPULAR_LIMIT);
+
+  const trust = [
+    { icon: Slice, title: 'Cut to order', sub: 'Prepared to your specification' },
+    { icon: Snowflake, title: 'Cold-chain packed', sub: 'Insulated bags with ice packs' },
+    { icon: Timer, title: coldMins === 60 ? 'Delivered within the hour' : `Delivered within ${coldMins} minutes`, sub: 'From packing to your door' },
+    { icon: ShieldCheck, title: 'Secure payment', sub: 'GCash, Maya, card or cash' },
+  ];
+  const steps = [
+    { title: 'Choose cut and weight', sub: 'Pick an approximate weight and how you’d like it prepared.' },
+    { title: 'We cut, weigh and pack', sub: 'Your order is prepared fresh and packed cold for travel.' },
+    { title: 'Pay the actual weight', sub: 'Usually within 5%. Any difference is charged or refunded automatically.' },
+  ];
 
   return (
     <div className="pb-4">
       {/* Hero */}
       <section className="relative bg-[#2a2322] text-white overflow-hidden">
-        {/* Butcher-counter photo, faded into the charcoal so the text stays readable */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/photos/hero-butcher.jpg" alt="" aria-hidden className="absolute inset-y-0 right-0 h-full w-full lg:w-[62%] object-cover opacity-30 lg:opacity-90" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#2a2322] via-[#2a2322]/90 to-[#2a2322]/30 lg:via-[#2a2322]/75 lg:to-transparent" aria-hidden />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_20%,rgba(200,21,29,0.35),transparent_55%)]" aria-hidden />
-        <Cleavers className="absolute -right-16 -bottom-20 w-72 md:w-[460px] md:right-0 md:-bottom-24 text-[#ae754d] opacity-20 md:opacity-30" />
-        <Container className="relative py-8 md:py-14 lg:py-16 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-8 items-center">
-          <div>
-            <p className="text-[#d9a07a] font-display uppercase tracking-[0.3em] text-xs md:text-sm">{shopper ? `${greet}, ${firstName}` : 'Digos City · Davao del Sur'}</p>
-            <h1 className="mt-2 leading-none">
-              <span className="block font-display uppercase font-bold text-[#ec1b26] text-[52px] md:text-[84px] tracking-wide drop-shadow-[0_2px_0_rgba(0,0,0,0.35)]">Jovanne’s</span>
-              <span className="block [font-family:var(--font-lobster)] text-[40px] md:text-[64px] -mt-1 md:-mt-2">Meat Shop</span>
-            </h1>
-            <p className="mt-4 font-display uppercase tracking-[0.28em] text-sm md:text-lg text-white/90 flex items-center gap-3">
-              <span className="h-px w-8 bg-[#ae754d]" aria-hidden /> Premium Quality Meats
-            </p>
-            <p className="mt-3 text-sm md:text-base text-white/75 max-w-md">Fresh beef, pork and chicken — cut the way you like, packed cold and delivered around Digos City, or ready for pickup.</p>
-            <div className="mt-6 grid grid-cols-3 gap-2 max-w-md md:flex md:max-w-none md:gap-3">
-              {bigCats.map((c) => (
-                <Link key={c.id} href={`/category/${c.id}`} className="h-12 px-2 md:px-6 rounded-full bg-[#c8151d] hover:bg-[#ec1b26] transition font-display uppercase tracking-wider font-semibold text-[13px] md:text-base flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-black/30">
-                  <span className="hidden md:inline" aria-hidden>{c.icon}</span> Shop {c.name}
+        <img src="/images/photos/hero-butcher.jpg" alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover opacity-40 md:opacity-55" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#2a2322] via-[#2a2322]/90 to-[#2a2322]/45 md:from-[#2a2322] md:from-25% md:via-[#2a2322]/80 md:via-50% md:to-[#2a2322]/30" aria-hidden />
+        <Container className={cn(WIDE, 'relative py-10 md:py-16 lg:py-20')}>
+          <p className="text-[#ae754d] font-display uppercase font-semibold tracking-[0.35em] text-xs md:text-sm">Digos City · Davao del Sur</p>
+          <h1 className="mt-3 leading-none">
+            <span className="block font-display uppercase font-bold text-[#e3202a] text-[60px] md:text-[84px] lg:text-[96px] leading-[0.95] tracking-wide">Jovanne’s</span>
+            <span className="block [font-family:var(--font-lobster)] text-[44px] md:text-[56px] lg:text-[62px] leading-none -mt-1">Meat Shop</span>
+          </h1>
+          <p className="mt-5 flex items-center gap-3 md:gap-4 font-display uppercase font-semibold tracking-[0.3em] text-sm md:text-lg">
+            <span className="h-0.5 w-8 bg-[#ae754d] shrink-0" aria-hidden /> Premium Quality Meats
+          </p>
+          <p className="mt-4 text-sm md:text-base text-white/80 leading-relaxed max-w-[440px]">Fresh beef, pork and chicken, cut the way you like, packed cold and delivered around Digos City, or ready for pickup.</p>
+          <div className="mt-6 grid grid-cols-3 gap-2 max-w-md sm:flex sm:flex-wrap sm:max-w-none sm:gap-3">
+            {heroCats.map((c) => {
+              const Icon = HERO_ICON[c.id] ?? Beef;
+              return (
+                <Link key={c.id} href={`/category/${c.id}`} className="h-11 md:h-12 px-2 sm:px-5 md:px-6 rounded-full bg-[#d6202a] hover:bg-[#c8151d] transition font-display uppercase tracking-wider font-semibold text-[13px] md:text-base flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-black/30">
+                  <Icon className="hidden sm:block w-4 h-4" aria-hidden /> Shop {c.name}
                 </Link>
-              ))}
-            </div>
-          </div>
-          <div className="hidden lg:flex justify-end items-end self-end">
-            <span className="bg-[#ae754d] text-white font-display uppercase tracking-[0.2em] text-xs px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg">Cut to order</span>
+              );
+            })}
           </div>
         </Container>
       </section>
 
-      <Container>
-        {/* Delivery / pickup location (on desktop it also sits in the header) */}
-        <div className="mt-4 flex items-stretch gap-2">
-          <button onClick={openLocation} className="flex-1 min-w-0 min-h-14 bg-white rounded-2xl border border-[#eadfd6] shadow-sm px-3 py-2 flex items-center gap-3 text-left hover:border-[#c8151d]/40">
-            <span className="w-10 h-10 rounded-full bg-[#fdecec] text-[#c8151d] flex items-center justify-center shrink-0">{effMode === 'delivery' ? <MapPin className="w-5 h-5" /> : <Store className="w-5 h-5" />}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] text-gray-500 leading-tight">{effMode === 'delivery' ? 'Delivering to' : 'Pickup at'} · {branch.hours}</span>
-              <span className="block text-sm font-semibold truncate">
-                {effMode === 'delivery' ? `${shopper ? address.label : 'Digos City'} · ${branch.name} branch` : `${branch.name} branch`}
-                <span className="text-gray-500 font-normal"> · {effMode === 'delivery' ? 'about 45 min' : 'ready in about 20 min'}</span>
-              </span>
-            </span>
-            <ChevronDown className="w-4 h-4 shrink-0 text-gray-500" />
-          </button>
-          {shopper && (
-            <Link href="/account/notifications" className="relative w-14 shrink-0 bg-white rounded-2xl border border-[#eadfd6] shadow-sm flex items-center justify-center hover:border-[#c8151d]/40" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
-              <Bell className="w-5 h-5 text-[#2a2322]" />
-              {unread > 0 && <span className="absolute top-2 right-2 min-w-4 h-4 px-1 rounded-full bg-[#c8151d] text-white text-[10px] font-bold flex items-center justify-center">{unread}</span>}
-            </Link>
-          )}
-        </div>
+      <Container className={WIDE}>
+        {shopper && lastOrder && <WelcomeBack o={lastOrder} firstName={shopper.firstName || shopper.name.split(' ')[0]} />}
 
         {mode === 'delivery' && !deliveryOk && (
-          <div className="mt-3 rounded-2xl bg-amber-50 border border-amber-200 p-3.5">
+          <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 p-3.5">
             <div className="flex gap-2.5">
               <TriangleAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
               <div className="text-xs text-amber-900">
@@ -120,136 +109,193 @@ export function HomeScreen() {
                 <p className="mt-0.5">{deliveryBlockReason}</p>
                 {pickupBranch && <p className="mt-1">You can still order for <b>pickup at {pickupBranch.name}</b> ({distanceKm(pickupBranch, address)} km away).</p>}
                 <div className="flex flex-wrap gap-2 mt-2.5">
-                  <button onClick={() => { setMode('pickup'); if (pickupBranch && pickupBranch.id !== branch.id) setBranchOverride(pickupBranch.id); }} className="h-11 md:h-9 px-4 rounded-full bg-amber-700 text-white text-xs font-semibold">Switch to pickup</button>
-                  <button onClick={openLocation} className="h-11 md:h-9 px-4 rounded-full bg-white border border-amber-300 text-amber-900 text-xs font-semibold">Change address</button>
+                  <button onClick={() => { setMode('pickup'); if (pickupBranch && pickupBranch.id !== branch.id) setBranchOverride(pickupBranch.id); }} className="h-11 md:h-9 px-4 rounded-lg bg-amber-700 text-white text-xs font-semibold">Switch to pickup</button>
+                  <button onClick={openLocation} className="h-11 md:h-9 px-4 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold">Change address</button>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        <SectionTitle action={<Link href="/category" className="text-sm font-semibold text-[#c8151d] hover:underline min-h-11 inline-flex items-center">All categories</Link>}>Shop fresh meat</SectionTitle>
-        <div className="grid grid-cols-3 gap-2.5 md:gap-4">
-          {bigCats.map((c, i) => (
-            <Link key={c.id} href={`/category/${c.id}`}
-              className={cn('relative h-32 md:h-44 rounded-2xl text-white text-left p-3 md:p-5 shadow-md overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition bg-gradient-to-br', MEAT_TILE_COLORS[i % MEAT_TILE_COLORS.length])}>
-              {c.photo ? (
-                <>
-                  <PhotoImg image={c.photo} fill className="transition-transform duration-300 hover:scale-105" />
-                  <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" aria-hidden />
-                </>
-              ) : (
-                <span className="absolute -right-2 -bottom-3 md:right-2 md:-bottom-4 text-[64px] md:text-[110px] leading-none drop-shadow-lg" aria-hidden>{c.icon}</span>
-              )}
-              <span className="relative block font-display uppercase tracking-wide text-lg md:text-3xl font-bold leading-tight">{c.name}</span>
-              <span className="relative block text-[11px] md:text-sm text-white/85">{products.filter((p) => catIdsUnder(c.id).includes(p.categoryId)).length} cuts</span>
-            </Link>
+        {/* Trust strip */}
+        <div className="mt-4 md:mt-5 rounded-lg border border-[#eadfd6] bg-[#eadfd6] overflow-hidden grid grid-cols-2 lg:grid-cols-4 gap-px">
+          {trust.map(({ icon: Icon, title, sub }) => (
+            <div key={title} className="bg-[#fffdfb] p-3 md:px-4 md:py-3.5 flex items-start md:items-center gap-2.5 md:gap-3">
+              <Icon className="w-5 h-5 text-[#c8151d] shrink-0 mt-0.5 md:mt-0" strokeWidth={1.75} aria-hidden />
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold text-[#2a2322] leading-snug">{title}</p>
+                <p className="text-[11px] text-gray-500 leading-snug">{sub}</p>
+              </div>
+            </div>
           ))}
         </div>
-        <div className="mt-3 rounded-2xl bg-white border border-[#eadfd6] px-3 py-2.5 text-xs md:text-sm text-[#2a2322] flex items-center gap-2">
-          <Snowflake className="w-4 h-4 text-[#ae754d] shrink-0" /> Cut to order, packed with ice packs and delivered within {coldMins} minutes of pickup.
+
+        {/* Shop by category */}
+        <h2 className="mt-8 md:mt-10 pb-2 mb-3 border-b border-[#e6dbd2] text-xl md:text-[22px] font-semibold text-[#2a2322]">Shop by category</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 md:gap-3">
+          {tops.map((c) => {
+            const n = products.filter((p) => inShopCategory(s, p, c.id)).length;
+            const unit = MEAT_CAT_IDS.includes(c.id) ? (n === 1 ? 'cut' : 'cuts') : (n === 1 ? 'product' : 'products');
+            return (
+              <Link key={c.id} href={`/category/${c.id}`} className="group bg-[#fffdfb] rounded-lg border border-[#eadfd6] overflow-hidden hover:shadow-md transition flex flex-col">
+                <span className="relative block aspect-[4/3] bg-[#f6ece4] overflow-hidden">
+                  {c.photo
+                    ? <PhotoImg image={c.photo} fill className="transition-transform duration-300 group-hover:scale-105" />
+                    : <span className="absolute inset-0 flex items-center justify-center text-5xl" aria-hidden>{c.icon}</span>}
+                </span>
+                <span className="px-3 py-2.5 flex items-center gap-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-[#2a2322] truncate">{c.name}</span>
+                    <span className="block text-[11px] text-gray-500">{n} {unit}</span>
+                  </span>
+                  <ArrowRight className="w-4 h-4 text-gray-500 shrink-0 group-hover:text-[#c8151d]" aria-hidden />
+                </span>
+              </Link>
+            );
+          })}
         </div>
 
-        <BannerCarousel />
-
-        {bestMeat.length > 0 && (
-          <>
-            <SectionTitle>Best-selling meat</SectionTitle>
-            <ProductRow products={bestMeat} />
-          </>
-        )}
-
-        {featuredMeat.length > 0 && (
-          <>
-            <SectionTitle>Featured cuts</SectionTitle>
-            <ProductRow products={featuredMeat} />
-          </>
-        )}
-
-        {buyAgain.length > 0 && (
-          <>
-            <SectionTitle action={<Link href="/my-orders" className="text-sm font-semibold text-[#c8151d] hover:underline min-h-11 inline-flex items-center">Past orders</Link>}>Buy again</SectionTitle>
-            <ProductRow products={buyAgain} />
-          </>
-        )}
-
-        {otherCats.length > 0 && (
-          <>
-            <SectionTitle>More from the shop</SectionTitle>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5 md:gap-4">
-              {otherCats.map((c) => (
-                <Link key={c.id} href={`/category/${c.id}`} className="bg-white rounded-2xl border border-[#eadfd6] shadow-sm hover:shadow-md transition p-3 flex flex-col items-center gap-1.5 text-center min-h-[96px]">
-                  <span className="text-3xl md:text-4xl" aria-hidden>{c.icon}</span>
-                  <span className="text-xs md:text-sm font-medium text-[#2a2322] leading-tight">{c.name}</span>
-                </Link>
-              ))}
+        {/* How ordering by weight works (guests and customers without orders) */}
+        {!lastOrder && <section className="mt-8 rounded-lg border border-[#eadfd6] bg-[#eadfd6] overflow-hidden grid grid-cols-1 md:grid-cols-3 lg:grid-cols-[minmax(0,310px)_1fr_1fr_1fr] gap-px" aria-labelledby="by-weight">
+          <div className="bg-[#2a2322] text-white px-4 py-4 md:col-span-3 lg:col-span-1 flex flex-col justify-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#d9a07a]">First order?</p>
+            <h2 id="by-weight" className="text-lg font-semibold leading-snug mt-0.5">How ordering by weight works</h2>
+          </div>
+          {steps.map((st, i) => (
+            <div key={st.title} className="bg-[#fffdfb] p-4 flex items-start gap-3">
+              <span className="w-7 h-7 rounded-full border-[1.5px] border-[#c8151d] text-[#c8151d] text-xs font-semibold flex items-center justify-center shrink-0" aria-hidden>{i + 1}</span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#2a2322]">{st.title}</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{st.sub}</p>
+              </div>
             </div>
-          </>
-        )}
+          ))}
+        </section>}
 
-        {promos.length > 0 && (
-          <>
-            <SectionTitle>On sale at {branch.name}</SectionTitle>
-            <ProductGrid>{promos.map((p) => <ProductTile key={p.id} p={p} />)}</ProductGrid>
-          </>
+        {/* Popular this week */}
+        <div className="mt-8 md:mt-10 mb-3 border-b border-[#e6dbd2] flex flex-col md:flex-row md:items-end md:justify-between gap-2 md:gap-4">
+          <div className="pb-0 md:pb-2">
+            <h2 className="text-xl md:text-[22px] font-semibold text-[#2a2322]">Popular this week</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Priced per kilogram unless stated. Each order is weighed after preparation.</p>
+          </div>
+          <div className="flex overflow-x-auto fm-noscroll -mx-4 px-4 md:mx-0 md:px-0" role="tablist" aria-label="Popular products">
+            {POPULAR_TABS.map((t) => (
+              <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+                className={cn('shrink-0 h-10 px-3 text-[13px] whitespace-nowrap border-b-2 -mb-px transition',
+                  tab === t.id ? 'border-[#c8151d] font-semibold text-[#2a2322]' : 'border-transparent text-gray-500 hover:text-[#2a2322]')}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {shown.length === 0 ? (
+          <p className="py-10 text-center text-sm text-gray-500">Nothing here yet. <Link href="/category" className="font-semibold text-[#c8151d] hover:underline">Browse all products</Link></p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 gap-2.5 md:gap-3" role="tabpanel">
+            {shown.map((p) => <PopularCard key={p.id} p={p} />)}
+          </div>
         )}
       </Container>
     </div>
   );
 }
 
-function BannerCarousel() {
-  const { s, shopper, branch } = useShop();
-  const cityId = shopper?.cityId ?? branch.cityId;
-  const banners = s.banners.filter((b) => b.active && (!b.cityId || b.cityId === cityId));
-  const [idx, setIdx] = useState(0);
-  useEffect(() => {
-    if (banners.length < 2) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % banners.length), 5000);
-    return () => clearInterval(t);
-  }, [banners.length]);
-  if (!banners.length) return null;
-  const cur = Math.min(idx, banners.length - 1);
+/** Signed-in strip: latest order (up to 3 items) with Order history and one-tap Reorder. */
+function WelcomeBack({ o, firstName }: { o: Order; firstName: string }) {
+  const { s, branch, flash, go } = useShop();
+  const date = new Date(o.placedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // Approximate reorder total at today's prices (items still sold and in stock).
+  const approx = o.items.reduce((n, i) => {
+    const p = s.products.find((x) => x.id === i.productId);
+    if (!p || p.status !== 'active' || available(s, p.id, branch.id) <= 0) return n;
+    const cut = i.cut && cutsFor(s, p).find((c) => c.id === i.cut!.id);
+    const amount = p.soldByWeight ? i.estWeightKg ?? (p.estWeightKg ?? 1) * i.qty : i.qty;
+    return n + lineEst(p, getPriceInfo(s, p.id, branch.id).price, amount, cut || undefined);
+  }, 0);
+  const money = (n: number) => (Number.isInteger(n) ? pesoShort(n) : peso(n));
+  const reorder = () => {
+    const { added, flagged } = reorderToCart(o, branch.id);
+    if (!added.length) { flash('These items are not available right now', 'err'); return; }
+    flash(flagged.length ? `${added.length} added · ${flagged.length} not available` : `${added.length} item${added.length === 1 ? '' : 's'} added to cart`, flagged.length ? 'info' : 'ok');
+    go({ name: 'cart' });
+  };
   return (
-    <div className="mt-6">
-      <div className="overflow-hidden rounded-2xl shadow-sm">
-        <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${cur * 100}%)` }}>
-          {banners.map((b) => {
-            const catId = bannerCategory(s.categories, `${b.title} ${b.subtitle}`);
-            return (
-              <Link key={b.id} href={catId ? `/category/${catId}` : '/category'} tabIndex={banners[cur]?.id === b.id ? 0 : -1}
-                className={cn('relative shrink-0 w-full h-36 md:h-48 bg-gradient-to-r text-white text-left p-5 md:p-8 overflow-hidden block', b.color)}>
-                <p className="font-display uppercase tracking-wide text-xl md:text-4xl font-bold leading-tight max-w-[65%]">{b.title}</p>
-                <p className="text-xs md:text-base text-white/90 mt-1 max-w-[65%]">{b.subtitle}</p>
-                <span className="inline-block mt-3 text-xs md:text-sm font-semibold bg-white/25 rounded-full px-3 py-1.5">Shop now</span>
-                {b.photo ? (
-                  <>
-                    <PhotoImg image={b.photo} fill className="!left-auto !w-[55%] md:!w-[45%]" />
-                    <span className={cn('absolute inset-y-0 right-0 w-[55%] md:w-[45%] bg-gradient-to-r to-transparent', b.color.replace(/^from-(\S+).*$/, 'from-$1'))} aria-hidden />
-                  </>
-                ) : (
-                  <span className="absolute right-4 md:right-12 bottom-2 text-[72px] md:text-[120px] leading-none drop-shadow-lg" aria-hidden>{b.emoji}</span>
-                )}
-              </Link>
-            );
-          })}
-        </div>
+    <section className="mt-4 md:mt-5 rounded-lg border border-[#eadfd6] bg-[#fffdfb] p-3 md:px-4 md:py-3 flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-5" aria-label="Your last order">
+      <div className="shrink-0">
+        <p className="text-[15px] font-semibold text-[#2a2322]">Welcome back, {firstName}</p>
+        <p className="text-[11px] text-gray-500">Last order · {date} · {STATUS_LABEL[o.status].toLowerCase()}</p>
       </div>
-      <div className="flex justify-center gap-1 mt-1">
-        {banners.map((b, i) => (
-          <button key={b.id} onClick={() => setIdx(i)} className="w-8 h-8 flex items-center justify-center" aria-label={`Show banner ${i + 1}`}>
-            <span className={cn('h-1.5 rounded-full transition-all', i === cur ? 'w-5 bg-[#c8151d]' : 'w-1.5 bg-gray-300')} />
-          </button>
+      <ul className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+        {o.items.slice(0, 3).map((i) => (
+          <li key={`${i.productId}|${i.cut?.id ?? ''}`} className="flex items-center gap-2.5 min-w-0">
+            <ProductImage emoji={i.image} size="sm" className="w-9 h-9 rounded shrink-0" />
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-[#2a2322] truncate">{i.name}</span>
+              <span className="block text-[11px] text-gray-500 truncate">
+                {i.soldByWeight ? fmtKg(i.actualWeightKg ?? i.estWeightKg ?? 1) : `× ${i.qty}`}{i.cut ? ` · ${i.cut.name.toLowerCase()}` : ''} · {money(lineTotal(i))}
+              </span>
+            </span>
+          </li>
         ))}
+      </ul>
+      <div className="shrink-0 flex flex-col-reverse sm:flex-row sm:items-center gap-2 sm:gap-4">
+        <Link href="/my-orders" className="text-[13px] font-semibold text-[#c8151d] hover:underline min-h-11 sm:min-h-0 inline-flex items-center justify-center">Order history</Link>
+        <button onClick={reorder} className="h-11 sm:h-10 px-4 rounded-lg bg-[#d6202a] hover:bg-[#c8151d] text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 w-full sm:w-auto whitespace-nowrap transition">
+          <RotateCcw className="w-4 h-4" aria-hidden /> Reorder{approx > 0 ? ` · approx. ${money(Math.round(approx))}` : ''}
+        </button>
       </div>
-    </div>
+    </section>
   );
 }
 
-/** Opens the category a banner talks about (e.g. "Pork liempo sale" → Pork), or all categories. */
-function bannerCategory(cats: { id: string; name: string; parentId?: string }[], text: string) {
-  const t = text.toLowerCase();
-  return cats.find((c) => !c.parentId && t.includes(c.name.toLowerCase().split(' ')[0]))?.id;
+/** Product card for "Popular this week": category, name, one-line description, price and one action. */
+function PopularCard({ p }: { p: Product }) {
+  const { s, branch, flash } = useShop();
+  const { following: notified, follow } = useStockAlert(p.id, p.name);
+  const info = getPriceInfo(s, p.id, branch.id);
+  const avail = available(s, p.id, branch.id);
+  const own = s.categories.find((c) => c.id === p.categoryId);
+  const cat = own?.parentId ? s.categories.find((c) => c.id === own.parentId) : own;
+  const needsChoice = p.soldByWeight || cutsFor(s, p).length > 0;
+  const promo = !!info.compareAt && info.compareAt > info.price;
+  const money = (n: number) => (Number.isInteger(n) ? pesoShort(n) : peso(n));
+  const per = p.soldByWeight ? 'per kg' : p.unit === 'pc' ? 'per piece' : p.unit === 'pack' ? 'per pack' : `per ${p.size}`;
+  const href = `/products/${p.id}`;
+  const btn = 'w-full h-10 rounded-lg text-[13px] font-semibold flex items-center justify-center gap-1.5 transition';
+  return (
+    <div className="group bg-[#fffdfb] rounded-lg border border-[#eadfd6] overflow-hidden flex flex-col min-w-0 hover:shadow-md transition">
+      <Link href={href} className="relative block" aria-label={p.name}>
+        <ProductImage emoji={p.image} className="aspect-[4/3]" />
+        {avail === 0 && <span className="absolute inset-x-2 bottom-2 rounded bg-[#2a2322]/90 text-white text-[11px] font-semibold text-center py-1">Out of stock today</span>}
+        {avail > 0 && promo && <span className="absolute top-2 left-2 bg-[#c8151d] text-white text-[11px] font-bold px-1.5 py-0.5 rounded">−{Math.round((1 - info.price / info.compareAt!) * 100)}%</span>}
+      </Link>
+      <div className="p-3 flex-1 flex flex-col">
+        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-gray-500 truncate">{cat?.name}</p>
+        <Link href={href} className="mt-0.5 text-sm font-semibold text-[#2a2322] truncate hover:text-[#c8151d]">{p.name}</Link>
+        <p className="text-xs text-gray-500 truncate mt-0.5">{p.description}</p>
+        <p className="mt-2 flex items-baseline gap-1.5 flex-wrap">
+          <b className="text-[15px] font-bold text-[#2a2322] leading-none">{money(info.price)}</b>
+          <span className="text-[11px] text-gray-500">{per}</span>
+          {promo && <span className="text-[11px] text-gray-400 line-through">{money(info.compareAt!)}</span>}
+        </p>
+        <div className="mt-auto pt-3">
+          {avail === 0 ? (
+            <button onClick={follow} disabled={notified}
+              className={cn(btn, 'bg-white border border-[#d9cdc3] text-[#2a2322] hover:border-[#2a2322] disabled:text-gray-500 disabled:hover:border-[#d9cdc3]')}>
+              {notified ? <><BellRing className="w-3.5 h-3.5" /> We&apos;ll let you know</> : 'Notify me when available'}
+            </button>
+          ) : needsChoice ? (
+            <Link href={href} className={cn(btn, 'bg-[#1d1716] hover:bg-[#372e2f] text-white')}>{p.soldByWeight ? 'Select weight' : 'Select cut'}</Link>
+          ) : (
+            <button onClick={() => { cartAdd({ productId: p.id, qty: 1 }); flash(`${p.name} added to cart`, 'ok', { label: 'View cart', href: '/cart' }); }}
+              className={cn(btn, 'bg-[#1d1716] hover:bg-[#372e2f] text-white')} aria-label={`Add ${p.name} to cart`}>
+              Add to cart
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ====================== ALL CATEGORIES ======================
@@ -538,7 +584,7 @@ export function ProductScreen({ id, editKey }: { id: string; editKey?: string })
   const [kgText, setKgText] = useState(String(kg));
   const [cutId, setCutId] = useState<string | undefined>(editLine ? editLine.cutId : cuts[0]?.id);
   const [note, setNote] = useState(editLine?.note ?? '');
-  const [notified, setNotified] = useState(false);
+  const { following: notified, follow } = useStockAlert(p?.id ?? id, p?.name ?? '');
   useDocumentTitle(p?.name);
   if (!p) {
     return (
@@ -591,7 +637,7 @@ export function ProductScreen({ id, editKey }: { id: string; editKey?: string })
   };
 
   const actions = avail === 0 ? (
-    <PrimaryButton onClick={() => { setNotified(true); flash(`We'll let you know when ${p.name} is back`, 'info'); }} disabled={notified} className={notified ? '' : 'bg-[#2a2322] hover:bg-[#372e2f]'}>
+    <PrimaryButton onClick={follow} disabled={notified} className={notified ? '' : 'bg-[#2a2322] hover:bg-[#372e2f]'}>
       <span className="inline-flex items-center gap-2">{notified ? <><BellRing className="w-4 h-4" /> We&apos;ll let you know</> : <><Bell className="w-4 h-4" /> Notify me when available</>}</span>
     </PrimaryButton>
   ) : (

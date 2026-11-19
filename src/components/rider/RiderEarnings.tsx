@@ -1,95 +1,144 @@
 'use client';
 
-import { BadgeCheck, Banknote, Package, Star } from 'lucide-react';
+import { useState } from 'react';
 import { useStore } from '@/src/lib/store';
-import { fmtDate, fmtTime, isToday, peso, pesoShort } from '@/src/lib/logic';
+import { fmtTime, isToday, peso, pesoShort } from '@/src/lib/logic';
 import { orderDistance, tipFor, tripEarnings } from '@/src/components/delivery/helpers';
+import { heldCod } from '@/app/delivery/riders/_own';
+import { areaOf, payFor, tripsOn } from './flow';
 import { useRider } from './RiderShell';
-import { HEADING, SectionTitle, card } from './ui';
+import { HEADING, PageTitle, card } from './ui';
 import { cn } from '@/src/lib/utils';
+
+const dayLabel = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
 export function RiderEarnings() {
   const s = useStore();
-  const { rider: r } = useRider();
-  const trips = s.orders.filter((o) => o.riderId === r.id && o.status === 'delivered').sort((a, b) => (b.completedAt ?? b.updatedAt).localeCompare(a.completedAt ?? a.updatedAt));
-  const todayTrips = trips.filter((o) => isToday(o.completedAt ?? o.updatedAt));
-  const tipsToday = todayTrips.reduce((t, o) => t + tipFor(o), 0);
-  // Last 7 days: real delivered orders, topped up to the rider's typical day for older days (demo history).
+  const { rider: r, clock } = useRider();
+  const now = clock.now;
+  const [pick, setPick] = useState(6); // 0..6 = the last 7 days, 6 = today
+
+  // The last 7 days, all from delivered orders (same pay rule as every trip row).
   const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() - (6 - i));
-    const key = d.toDateString();
-    const list = trips.filter((o) => new Date(o.completedAt ?? o.updatedAt).toDateString() === key);
-    const real = list.reduce((t, o) => t + tripEarnings(s, o, r) + tipFor(o), 0);
-    const isTodayDay = i === 6;
-    const synth = ((r.id.charCodeAt(2) * 13 + i * 37) % 5 + 3) * 85;
-    return { label: d.toLocaleDateString('en-US', { weekday: 'short' }), amt: isTodayDay ? Math.max(r.earningsToday, real) : Math.max(real, r.status === 'pending' ? 0 : synth) };
+    const d = new Date(now); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (6 - i));
+    const trips = tripsOn(s, r, d);
+    return { date: d, trips, pay: payFor(s, r, trips) };
   });
-  const week = days.reduce((t, d) => t + d.amt, 0);
-  const maxAmt = Math.max(...days.map((d) => d.amt), 1);
-  const remitted = s.audit.filter((a) => a.action === 'COD remitted' && a.detail.startsWith(r.name) && isToday(a.at));
-  const remittedAmt = remitted.reduce((t, a) => t + (Number((a.oldValue ?? '').replace(/[^\d.]/g, '')) || 0), 0);
+  const today = days[6];
+  const sel = days[pick];
+  const week = days.reduce((t, d) => t + d.pay.total, 0);
+  const maxAmt = Math.max(...days.map((d) => d.pay.total), 1);
+  const first = days[0].date;
+  const sameMonth = first.getMonth() === today.date.getMonth();
+  const weekRange = `${first.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}–${today.date.toLocaleDateString('en-US', sameMonth ? { day: 'numeric' } : { month: 'short', day: 'numeric' })}`;
+
+  // COD: the orders behind the cash held (same rule as the staff Riders page), newest first.
+  const held = heldCod(s, r, now).orders.slice().reverse();
+  const remittedToday = (s.remittances ?? []).filter((x) => (x.riderId === r.id || x.riderName === r.name) && isToday(x.at)).reduce((t, x) => t + x.amount, 0);
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold uppercase tracking-wide text-[#2a2322]" style={HEADING}>Earnings</h1>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-start">
+      <PageTitle>Earnings</PageTitle>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
         <div className="space-y-4">
-          <div className="rounded-2xl bg-[#2a2322] p-5 text-white shadow-sm">
-            <p className="text-sm text-stone-300">Today’s earnings</p>
-            <p className="mt-0.5 text-4xl font-bold" style={HEADING}>{peso(r.earningsToday)}</p>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-stone-200">
-              <span>{r.tripsToday} trips</span>
-              <span>Tips {pesoShort(tipsToday)}</span>
-              <span className="flex items-center gap-1"><Star className="h-3.5 w-3.5 fill-[#ae754d] text-[#ae754d]" /> {r.rating ? r.rating.toFixed(1) : '—'}</span>
-            </div>
-            <div className="mt-4 h-1 w-16 rounded-full bg-[#ec1b26]" />
-          </div>
+          {/* Today */}
+          <section aria-label="Today’s earnings" className="rounded-xl bg-[#2a2322] p-5 text-white sm:p-6">
+            <p className="text-sm text-stone-300 sm:text-[15px]">Today · {dayLabel(today.date)}</p>
+            <p className="mt-1 text-5xl font-bold leading-none sm:text-6xl" style={HEADING}>{peso(today.pay.total)}</p>
+            <p className="mt-2 text-sm text-stone-300 sm:text-[15px]">
+              {today.pay.trips} trip{today.pay.trips === 1 ? '' : 's'} · {pesoShort(today.pay.tips)} tips · ★ {r.rating ? r.rating.toFixed(1) : '—'} rating
+            </p>
+            <dl className="mt-4 divide-y divide-white/10 border-y border-white/10 text-sm sm:text-[15px]">
+              <div className="flex justify-between gap-3 py-2.5"><dt className="text-stone-200">Base pay · {today.pay.trips} × {pesoShort(today.pay.baseRate)}</dt><dd className="font-semibold">{pesoShort(today.pay.base)}</dd></div>
+              <div className="flex justify-between gap-3 py-2.5"><dt className="text-stone-200">Distance · {today.pay.km} km × {pesoShort(today.pay.perKm)}</dt><dd className="font-semibold">{pesoShort(today.pay.distance)}</dd></div>
+              <div className="flex justify-between gap-3 py-2.5"><dt className="text-stone-200">Tips</dt><dd className="font-semibold">{pesoShort(today.pay.tips)}</dd></div>
+            </dl>
+          </section>
 
-          <div className={cn(card, 'p-4')}>
-            <div className="flex items-baseline justify-between"><p className="text-sm font-semibold text-stone-900">This week</p><p className="text-xl font-bold text-[#c8151d]" style={HEADING}>{pesoShort(week)}</p></div>
-            <div className="mt-3 flex h-28 items-end gap-2">
-              {days.map((d, i) => (
-                <div key={i} className="flex flex-1 flex-col items-center gap-1">
-                  <div className={cn('w-full rounded-t-md', i === 6 ? 'bg-[#c8151d]' : 'bg-[#ae754d]/40')} style={{ height: `${(d.amt / maxAmt) * 84}px` }} title={pesoShort(d.amt)} />
-                  <span className="text-xs text-stone-600">{d.label}</span>
-                </div>
-              ))}
+          {/* This week */}
+          <section aria-label="This week" className={cn(card, 'p-4 sm:p-5')}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-base font-semibold text-[#2a2322] sm:text-[17px]">This week · {weekRange}</p>
+                <p className="text-sm text-stone-600">Tap a day to see its trips</p>
+              </div>
+              <p className="text-3xl font-bold leading-none text-[#2a2322] sm:text-4xl" style={HEADING}>{pesoShort(week)}</p>
             </div>
-          </div>
+            <div className="mt-4 grid h-48 grid-cols-7 items-end gap-1.5 sm:gap-2">
+              {days.map((d, i) => {
+                const isTodayBar = i === 6;
+                const on = i === pick;
+                return (
+                  <button key={i} type="button" onClick={() => setPick(i)} aria-pressed={on}
+                    aria-label={`${d.date.toLocaleDateString('en-US', { weekday: 'long' })}: ${pesoShort(d.pay.total)}, ${d.pay.trips} trips`}
+                    className="group flex h-full min-w-0 flex-col items-center justify-end gap-1 rounded-md focus-visible:outline-2 focus-visible:outline-[#c8151d]">
+                    <span className={cn('text-[10px] font-semibold sm:text-xs', on ? 'text-[#2a2322]' : 'text-stone-500')}>{pesoShort(d.pay.total)}</span>
+                    <span className={cn('w-full rounded-t-md transition-colors',
+                      isTodayBar ? 'bg-[#c8151d]' : on ? 'bg-[#c9a98c]' : 'bg-[#e5d6c8] group-hover:bg-[#d8c3b0]')}
+                      style={{ height: `${Math.max(4, (d.pay.total / maxAmt) * 128)}px` }} />
+                    <span className={cn('text-xs sm:text-sm', on ? 'font-semibold text-[#2a2322]' : 'text-stone-600')}>{d.date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className={cn(card, 'p-4')}>
-              <p className="flex items-center gap-1 text-xs text-stone-600"><Banknote className="h-4 w-4" /> COD held</p>
-              <p className={cn('text-xl font-bold', r.codHeld ? 'text-amber-800' : 'text-stone-900')} style={HEADING}>{peso(r.codHeld)}</p>
-              <p className="text-xs text-stone-500">Remit at the branch</p>
+          {/* COD cash */}
+          <section aria-label="COD cash" className={cn(card, 'overflow-hidden')}>
+            <div className="grid grid-cols-2 divide-x divide-[#eadfd6]">
+              <div className="p-4 sm:px-5">
+                <p className="text-sm text-stone-600">COD cash held</p>
+                <p className={cn('mt-0.5 text-3xl font-bold leading-tight sm:text-4xl', r.codHeld > 0 ? 'text-[#ae754d]' : 'text-[#2a2322]')} style={HEADING}>{pesoShort(r.codHeld)}</p>
+              </div>
+              <div className="p-4 sm:px-5">
+                <p className="text-sm text-stone-600">Remitted today</p>
+                <p className="mt-0.5 text-3xl font-bold leading-tight text-[#2a2322] sm:text-4xl" style={HEADING}>{pesoShort(remittedToday)}</p>
+              </div>
             </div>
-            <div className={cn(card, 'p-4')}>
-              <p className="flex items-center gap-1 text-xs text-stone-600"><BadgeCheck className="h-4 w-4" /> Remitted today</p>
-              <p className="text-xl font-bold text-green-700" style={HEADING}>{peso(remittedAmt)}</p>
-              <p className="text-xs text-stone-500">{remitted.length ? `Last ${fmtTime(remitted[0].at)}` : 'No remittance yet'}</p>
-            </div>
-          </div>
+            {held.length > 0 && (
+              <ul className="divide-y divide-[#eadfd6] border-t border-[#eadfd6]">
+                {held.map((o) => (
+                  <li key={o.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm sm:px-5 sm:text-[15px]">
+                    <span className="min-w-0 truncate"><span className="text-[#2a2322]">{o.number}</span><span className="text-stone-500"> · {fmtTime(o.completedAt ?? o.updatedAt)}</span></span>
+                    <span className="shrink-0 font-semibold">{pesoShort(o.total)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="border-t border-[#eadfd6] bg-[#f8f3ee] px-4 py-3 text-sm text-stone-600 sm:px-5">
+              {r.codHeld > 0 ? 'Hand this cash to the branch cashier before you end your shift.' : 'No cash on hand — nothing to remit.'}
+            </p>
+          </section>
         </div>
 
-        <div className={card}>
-          <SectionTitle className="px-4 pb-2 pt-4">Trips</SectionTitle>
-          {trips.length === 0 && <p className="px-4 pb-4 text-sm text-stone-500">No completed trips yet.</p>}
-          <ul className="divide-y divide-stone-100">
-            {trips.slice(0, 15).map((o) => (
-              <li key={o.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700"><Package className="h-5 w-5" strokeWidth={1.75} /></div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-stone-900">{o.number} <span className="text-xs font-normal text-stone-500">· {orderDistance(s, o)} km</span></p>
-                  <p className="text-xs text-stone-600">{fmtDate(o.completedAt ?? o.updatedAt)} {fmtTime(o.completedAt ?? o.updatedAt)}{o.paymentMethod === 'cod' ? ' · COD' : ''}{o.rating?.rider ? ` · ★${o.rating.rider}` : ''}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-stone-900">{pesoShort(tripEarnings(s, o, r))}</p>
-                  {tipFor(o) > 0 && <p className="text-xs text-green-700">+{pesoShort(tipFor(o))} tip</p>}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {/* Trips of the selected day */}
+        <section aria-label="Trips" className={cn(card, 'overflow-hidden')}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-[#eadfd6] px-4 py-4 sm:px-5">
+            <h2 className="text-lg font-semibold text-[#2a2322] sm:text-xl">{pick === 6 ? `Today · ${dayLabel(sel.date)}` : dayLabel(sel.date)}</h2>
+            <p className="text-sm text-stone-600 sm:text-[15px]">{sel.pay.trips} trip{sel.pay.trips === 1 ? '' : 's'} · {pesoShort(sel.pay.total)}</p>
+          </div>
+          {sel.trips.length === 0 ? <p className="px-4 py-8 text-center text-sm text-stone-500">No trips on this day.</p> : (
+            <ul className="divide-y divide-[#eadfd6]">
+              {sel.trips.map((o) => {
+                const tip = tipFor(o);
+                const meta = [o.number, `${orderDistance(s, o)} km`, o.paymentMethod === 'cod' ? `COD ${pesoShort(o.total)}` : '', o.rating?.rider ? `★${o.rating.rider}` : ''].filter(Boolean).join(' · ');
+                return (
+                  <li key={o.id} className="flex items-center gap-3 px-4 py-3.5 sm:gap-5 sm:px-5">
+                    <span className="w-16 shrink-0 text-sm text-stone-600 sm:w-20 sm:text-[15px]">{fmtTime(o.completedAt ?? o.updatedAt)}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-[#2a2322]">{areaOf(o)}</p>
+                      <p className="truncate text-xs text-stone-600 sm:text-sm">{meta}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-bold text-[#2a2322]">{pesoShort(tripEarnings(s, o, r) + tip)}</p>
+                      {tip > 0 && <p className="text-xs text-[#1f6b3f]">incl. {pesoShort(tip)} tip</p>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );

@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Bike, Camera, Check, ChevronRight, CircleX, Download, Flag, MessageCircle, Phone, PhoneOff, RotateCcw, Share2, Star, Store, TriangleAlert } from 'lucide-react';
+import { Bike, Camera, Check, ChevronRight, CircleX, Download, Flag, MessageCircle, Phone, PhoneOff, Share2, Star, Store } from 'lucide-react';
 import type { Conversation, Order, OrderItem } from '@/src/lib/types';
 import { mutate, uid } from '@/src/lib/store';
 import {
-  available, cutFeeText, fmtDateTime, fmtTime, getSetting, lineTotal, num, OPEN_STATUSES, PAYMENT_LABEL, peso, riderPosition, setOrderStatus, STATUS_LABEL,
+  cutFeeText, fmtDateTime, fmtTime, getSetting, lineTotal, num, OPEN_STATUSES, PAYMENT_LABEL, peso, riderPosition, setOrderStatus, STATUS_LABEL,
 } from '@/src/lib/logic';
 import { moduleOn } from '@/src/lib/platform';
 import { useTick } from '@/src/lib/store';
@@ -14,9 +14,10 @@ import { StatusBadge } from '@/src/components/common';
 import { MapView } from '@/src/components/MapView';
 import { cn } from '@/src/lib/utils';
 import {
-  CallBranchButton, Card, Container, DEFAULT_SUB_PREF, MobileActionBar, PrimaryButton, ScreenHeader, Sheet, cutsFor, fmtKg, lineKey, ratingsOn as ratingsEnabled, roundKg,
+  CallBranchButton, Card, Container, MobileActionBar, PrimaryButton, ScreenHeader, Sheet, fmtKg, ratingsOn as ratingsEnabled,
   useDocumentTitle, useMe, useShop,
 } from './shared';
+import { CANCEL_REASONS, canCancel, isDone } from './orderRules';
 import { ProductImage as PhotoImg } from '@/src/components/ProductImage';
 
 /** "1.5 kg est. · Sliced thin (+₱20/kg)" or "× 2 · Sliced". */
@@ -26,17 +27,6 @@ function itemDetail(i: OrderItem) {
 }
 
 // ---------- helpers ----------
-const CANCEL_UNTIL: Record<string, string[]> = {
-  Placed: ['placed', 'awaiting_confirmation'],
-  Confirmed: ['placed', 'awaiting_confirmation', 'confirmed'],
-  Preparing: ['placed', 'awaiting_confirmation', 'confirmed', 'preparing', 'awaiting_shopper'],
-};
-function canCancel(s: ReturnType<typeof useShop>['s'], o: Order) {
-  const w = String(getSetting(s, 'cancelWindowStatus', o.branchId) || 'Confirmed');
-  return (CANCEL_UNTIL[w] ?? CANCEL_UNTIL.Confirmed).includes(o.status);
-}
-const isDone = (o: Order) => o.status === 'delivered' || o.status === 'collected';
-
 /** Open (or create) a conversation and return its id. */
 function openConversation(kind: Conversation['kind'], o: Order, customerName: string, opts: { category?: Conversation['category']; system?: string; firstMessage?: string } = {}) {
   let id = '';
@@ -83,118 +73,8 @@ function NotFound({ title }: { title: string }) {
 }
 
 // ====================== ORDERS LIST ======================
-type Filter = 'all' | 'active' | 'completed' | 'cancelled';
-
-export function OrdersScreen() {
-  const { s, go, branch, flash } = useShop();
-  const shopper = useMe();
-  const [filter, setFilter] = useState<Filter>('all');
-  const [reorderResult, setReorderResult] = useState<{ added: string[]; flagged: string[] } | null>(null);
-  const mine = s.orders.filter((o) => o.customerId === shopper.id).sort((a, b) => b.placedAt.localeCompare(a.placedAt));
-  const list = mine.filter((o) =>
-    filter === 'all' ? true : filter === 'active' ? OPEN_STATUSES.includes(o.status) : filter === 'completed' ? isDone(o) : o.status === 'cancelled' || o.status === 'failed_delivery');
-  const active = list.filter((o) => OPEN_STATUSES.includes(o.status));
-  const past = list.filter((o) => !OPEN_STATUSES.includes(o.status));
-
-  const reorder = (o: Order) => {
-    const added: string[] = [];
-    const flagged: string[] = [];
-    mutate((d) => {
-      for (const i of o.items) {
-        const p = d.products.find((x) => x.id === i.productId);
-        if (!p || p.status !== 'active' || available(d, p.id, branch.id) <= 0) { flagged.push(i.name); continue; }
-        const cutId = i.cut && cutsFor(d, p).some((c) => c.id === i.cut!.id) ? i.cut.id : undefined;
-        const kg = p.soldByWeight ? i.estWeightKg ?? (p.estWeightKg ?? 1) * i.qty : undefined;
-        const l = d.cart.find((c) => lineKey(c) === lineKey({ productId: p.id, cutId }));
-        if (l) {
-          if (kg !== undefined) l.weightKg = roundKg((l.weightKg ?? 0) + kg);
-          else l.qty += i.qty;
-        } else d.cart.push({ productId: p.id, qty: p.soldByWeight ? 1 : i.qty, weightKg: kg !== undefined ? roundKg(kg) : undefined, cutId, note: i.note, subPref: DEFAULT_SUB_PREF });
-        added.push(i.name);
-      }
-    });
-    if (flagged.length) setReorderResult({ added, flagged });
-    else { flash(`${added.length} items added to cart`); go({ name: 'cart' }); }
-  };
-
-  return (
-    <Container className="pb-6">
-      <ScreenHeader title="My orders" sub={`${mine.length} order${mine.length === 1 ? '' : 's'}`} back={false} />
-      <div className="flex gap-2 pb-4 overflow-x-auto fm-noscroll -mx-4 px-4 md:mx-0 md:px-0" role="tablist" aria-label="Filter orders">
-        {(['all', 'active', 'completed', 'cancelled'] as Filter[]).map((f) => (
-          <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} className={cn('shrink-0 h-11 md:h-9 px-4 rounded-full text-sm font-semibold border capitalize', filter === f ? 'bg-[#c8151d] text-white border-[#c8151d]' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300')}>{f}</button>
-        ))}
-      </div>
-      {list.length === 0 && (
-        <div className="text-center py-16 px-8">
-          <p className="text-5xl" aria-hidden>🧾</p>
-          <p className="text-base font-semibold mt-3">No orders here yet</p>
-          <Link href="/" className="mt-5 h-12 px-8 rounded-full bg-[#c8151d] hover:bg-[#a3111a] text-white font-semibold text-sm inline-flex items-center">Start shopping</Link>
-        </div>
-      )}
-      {active.length > 0 && <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Active</p>}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">{active.map((o) => <OrderCard key={o.id} o={o} onReorder={reorder} />)}</div>
-      {past.length > 0 && <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mt-6 mb-2">Past orders</p>}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">{past.map((o) => <OrderCard key={o.id} o={o} onReorder={reorder} />)}</div>
-
-      <Sheet open={!!reorderResult} onClose={() => setReorderResult(null)} title="Reorder">
-        {reorderResult && (
-          <div className="text-sm">
-            <p className="text-gray-800"><b>{reorderResult.added.length}</b> item{reorderResult.added.length === 1 ? '' : 's'} added to your cart.</p>
-            <div className="mt-3 rounded-2xl bg-amber-50 border border-amber-200 p-3">
-              <p className="text-xs font-semibold text-amber-900 flex items-center gap-1.5"><TriangleAlert className="w-3.5 h-3.5" /> Unavailable at {branch.name} right now</p>
-              <ul className="mt-1.5 text-xs text-amber-900 list-disc pl-5">{reorderResult.flagged.map((n) => <li key={n}>{n}</li>)}</ul>
-            </div>
-            <PrimaryButton onClick={() => { setReorderResult(null); go({ name: 'cart' }); }} className="mt-4">View cart</PrimaryButton>
-          </div>
-        )}
-      </Sheet>
-    </Container>
-  );
-}
-
-function OrderCard({ o, onReorder }: { o: Order; onReorder: (o: Order) => void }) {
-  const { s } = useShop();
-  const b = s.branches.find((x) => x.id === o.branchId);
-  const open = OPEN_STATUSES.includes(o.status);
-  const ratingsOn = ratingsEnabled(s, o.branchId);
-  const href = open ? `/my-orders/${o.id}` : `/my-orders/${o.id}/receipt`;
-  return (
-    <Card className="p-4 flex flex-col">
-      <Link href={href} className="block w-full text-left group">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm md:text-base font-semibold group-hover:text-[#c8151d]">{o.number}</p>
-          <StatusBadge status={o.status} />
-        </div>
-        <p className="text-xs text-gray-600 mt-0.5">{b?.name} · {o.fulfillment === 'delivery' ? 'Delivery' : 'Pickup'} · {fmtDateTime(o.placedAt)}</p>
-        <div className="flex items-center justify-between mt-3">
-          <div className="flex -space-x-1.5">
-            {o.items.slice(0, 5).map((i, n) => <span key={`${i.productId}-${n}`} className="relative overflow-hidden w-9 h-9 rounded-full bg-[#f8e7da] border-2 border-white flex items-center justify-center text-base" aria-hidden><PhotoImg image={i.image} fill /></span>)}
-            {o.items.length > 5 && <span className="w-9 h-9 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[11px] font-semibold text-gray-700">+{o.items.length - 5}</span>}
-          </div>
-          <p className="text-base font-bold">{peso(o.total)}</p>
-        </div>
-      </Link>
-      <div className="flex gap-2 mt-3">
-        {open ? (
-          <Link href={`/my-orders/${o.id}`} className="flex-1 h-11 md:h-10 rounded-xl bg-[#c8151d] hover:bg-[#a3111a] text-white text-sm font-semibold flex items-center justify-center">Track order</Link>
-        ) : (
-          <>
-            <button onClick={() => onReorder(o)} className="flex-1 h-11 md:h-10 rounded-xl bg-[#c8151d] hover:bg-[#a3111a] text-white text-sm font-semibold flex items-center justify-center gap-1"><RotateCcw className="w-4 h-4" /> Reorder</button>
-            <Link href={`/my-orders/${o.id}/receipt`} className="flex-1 h-11 md:h-10 rounded-xl border border-gray-200 text-sm font-semibold text-gray-800 hover:border-gray-300 flex items-center justify-center">Receipt</Link>
-            {isDone(o) && ratingsOn && (
-              o.rating ? (
-                <span className="h-11 md:h-10 px-3 rounded-xl bg-amber-50 text-amber-800 text-sm font-semibold flex items-center gap-1"><Star className="w-4 h-4 fill-amber-400 text-amber-400" />{o.rating.order}</span>
-              ) : (
-                <Link href={`/my-orders/${o.id}/rate`} className="h-11 md:h-10 px-3 rounded-xl border border-amber-300 text-amber-800 text-sm font-semibold flex items-center">Rate</Link>
-              )
-            )}
-          </>
-        )}
-      </div>
-    </Card>
-  );
-}
+// The My orders page lives in MyOrdersList.tsx.
+export { OrdersScreen } from './MyOrdersList';
 
 // ====================== TRACKING ======================
 const DELIVERY_STEPS = [
@@ -453,7 +333,7 @@ export function TrackScreen({ orderId }: { orderId: string }) {
       <Sheet open={cancelOpen} onClose={() => setCancelOpen(false)} title={`Cancel ${o.number}?`}>
         <p className="text-sm text-gray-700 mb-3">{o.paymentStatus === 'paid' ? `Your payment of ${peso(o.total)} will be refunded automatically to ${PAYMENT_LABEL[o.paymentMethod]}.` : 'No payment has been collected for this order.'}</p>
         <div className="space-y-2" role="radiogroup" aria-label="Reason">
-          {['Changed my mind', 'Ordered by mistake', 'Delivery takes too long', 'Want to change items'].map((r) => (
+          {CANCEL_REASONS.map((r) => (
             <button key={r} role="radio" aria-checked={cancelReason === r} onClick={() => setCancelReason(r)} className={cn('w-full text-left rounded-xl border px-3 min-h-12 text-sm', cancelReason === r ? 'border-[#c8151d] bg-[#fdf5f5]' : 'border-gray-200')}>{r}</button>
           ))}
         </div>

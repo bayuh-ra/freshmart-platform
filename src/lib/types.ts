@@ -205,9 +205,13 @@ export interface Transfer {
 }
 
 export interface Address {
-  label: 'Home' | 'Work' | 'Other';
+  label: 'Home' | 'Work' | 'Office' | 'Other';
   line: string;
   landmark?: string;
+  /** Person who receives the delivery at this address (shown on the Saved addresses card). */
+  recipient?: string;
+  /** Recipient's mobile number. */
+  phone?: string;
   lat: number;
   lng: number;
 }
@@ -237,6 +241,32 @@ export interface Customer {
   googleEmail?: string;
   /** Required profile (name, username, password, phone, address) is filled in. */
   profileComplete?: boolean;
+  /** "Customer since" date shown on My account (falls back to createdAt). */
+  customerSince?: string;
+  /** Optional birthday (YYYY-MM-DD) from Personal details. */
+  birthday?: string;
+  /** Product ids the customer follows for a one-time back-in-stock text. */
+  stockAlerts?: ID[];
+  /** Message preferences from My account > Notifications (order updates by text are always on). */
+  notifyPrefs?: CustomerNotifyPrefs;
+  /** Saved payment methods (demo: labels only, no card numbers). Missing = cash on delivery only. */
+  paymentMethods?: SavedPaymentMethod[];
+}
+
+export interface CustomerNotifyPrefs {
+  emailReceipts: boolean;
+  backInStock: boolean;
+  offers: boolean;
+}
+
+export interface SavedPaymentMethod {
+  id: ID;
+  kind: 'gcash' | 'maya' | 'card' | 'cod';
+  /** e.g. "GCash" */
+  label: string;
+  /** e.g. "0917 ••• 4567" */
+  detail?: string;
+  isDefault?: boolean;
 }
 
 export type OrderChannel = 'app' | 'walk_in' | 'phone';
@@ -361,6 +391,9 @@ export interface Rider {
   /** When the oldest unremitted COD cash was collected, and from how many orders (demo data). */
   codSince?: string;
   codOrders?: number;
+  /** Rider App preferences: navigation app opened first, and the new-offer sound (default on). */
+  navApp?: 'google' | 'waze';
+  offerSound?: boolean;
 }
 
 export interface DeliveryZone {

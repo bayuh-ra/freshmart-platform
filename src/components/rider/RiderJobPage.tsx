@@ -15,8 +15,8 @@ import { cn } from '@/src/lib/utils';
 function Notice({ icon, tone, title, body, nextId }: { icon: React.ReactNode; tone: 'ok' | 'info'; title: string; body: string; nextId?: string }) {
   return (
     <div className={cn(card, 'mx-auto max-w-lg p-6 text-center')}>
-      <div className={cn('mx-auto flex h-16 w-16 items-center justify-center rounded-full', tone === 'ok' ? 'bg-green-50 text-green-700' : 'bg-stone-100 text-stone-600')}>{icon}</div>
-      <h1 className="mt-3 text-2xl font-bold text-[#2a2322]" style={HEADING}>{title}</h1>
+      <div className={cn('mx-auto flex h-16 w-16 items-center justify-center rounded-full', tone === 'ok' ? 'bg-[#e3efe6] text-[#1f6b3f]' : 'bg-[#efe7df] text-stone-600')}>{icon}</div>
+      <h1 className="mt-3 text-3xl font-bold uppercase text-[#2a2322]" style={HEADING}>{title}</h1>
       <p className="mt-1 text-sm text-stone-600">{body}</p>
       <div className="mt-5 grid gap-2">
         {nextId && <Link href={`/rider/jobs/${nextId}`} className={btn.primary}>Next job <ArrowRight className="h-5 w-5" /></Link>}
@@ -49,7 +49,7 @@ export function RiderJobPage({ orderId }: { orderId: string }) {
     return <Notice tone="info" icon={<Undo2 className="h-8 w-8" />} title="Items returned" body={`${o.number} was returned to the branch. The branch will take it from here.`} nextId={nextId} />;
   }
   if (o.status === 'ready' && !isAccepted(o, r)) {
-    return <Notice tone="info" icon={<Info className="h-8 w-8" />} title="Job offer" body={`Accept ${o.number} from your job offers first.`} />;
+    return <Notice tone="info" icon={<Info className="h-8 w-8" />} title="Job offer" body={`Accept ${o.number} from the job offer on the Jobs page first.`} />;
   }
   if (o.status !== 'ready' && o.status !== 'out_for_delivery' && o.status !== 'failed_delivery') {
     return <Notice tone="info" icon={<Info className="h-8 w-8" />} title="Job no longer active" body={`${o.number} is no longer out for delivery.`} nextId={nextId} />;

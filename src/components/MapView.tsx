@@ -44,10 +44,12 @@ function ring(lat: number, lng: number, km: number, steps = 72): [number, number
 }
 export interface MapLine { points: [number, number][]; color?: string; dashed?: boolean; weight?: number; opacity?: number }
 
-export function MapView({ center, zoom = 13, markers = [], circles = [], lines = [], className = 'h-80', fitToMarkers = false, frameClass = 'rounded-xl border border-gray-200' }: {
+export function MapView({ center, zoom = 13, markers = [], circles = [], lines = [], className = 'h-80', fitToMarkers = false, frameClass = 'rounded-xl border border-gray-200', zoomPosition = 'topleft' }: {
   center: [number, number]; zoom?: number; markers?: MapMarker[]; circles?: MapCircle[]; lines?: MapLine[]; className?: string; fitToMarkers?: boolean;
   /** Border/radius classes of the map box (pass '' when the map sits inside a card). */
   frameClass?: string;
+  /** Corner of the + / − zoom buttons (default top-left). */
+  zoomPosition?: 'topleft' | 'topright' | 'bottomleft' | 'bottomright';
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
@@ -56,20 +58,32 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], lines =
   const fitted = useRef(false);
   /** Last drawn data; skip redraws when nothing changed (keeps open popups and tooltips alive). */
   const drawn = useRef('');
+  /** Latest fit() (the resize observer is created once, so it calls through this ref). */
+  const fitLatest = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
+    let ro: ResizeObserver | undefined;
     import('leaflet').then((mod) => {
       if (cancelled || !el.current || map.current) return;
       const lf = (mod as unknown as { default?: typeof Leaflet }).default ?? (mod as unknown as typeof Leaflet);
       L.current = lf;
-      map.current = lf.map(el.current, { zoomControl: true, attributionControl: true }).setView(center, zoom);
+      map.current = lf.map(el.current, { zoomControl: false, attributionControl: true }).setView(center, zoom);
+      lf.control.zoom({ position: zoomPosition }).addTo(map.current);
       lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map.current);
       layer.current = lf.layerGroup().addTo(map.current);
+      // The box can get its size after the map is created (e.g. a grid column laid out later):
+      // re-measure on resize, and fit the markers once the box has a size.
+      ro = new ResizeObserver(() => {
+        map.current?.invalidateSize();
+        fitLatest.current();
+      });
+      ro.observe(el.current);
       draw();
     });
     return () => {
       cancelled = true;
+      ro?.disconnect();
       map.current?.remove();
       map.current = null;
     };
@@ -99,13 +113,21 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], lines =
       if (m.popup) mk.bindPopup(m.popup, { closeButton: false });
       if (m.onClick) mk.on('click', m.onClick);
     }
-    if (fitToMarkers && !fitted.current && markers.length > 1) {
-      map.current.fitBounds(lf.latLngBounds(markers.map((m) => [m.lat, m.lng] as [number, number])), { padding: [40, 40] });
-      fitted.current = true;
-    }
+    fit();
+  }
+
+  /** Fit the markers once (only when the map box has a size, else Leaflet zooms all the way in). */
+  function fit() {
+    const lf = L.current;
+    if (!lf || !map.current || !fitToMarkers || fitted.current || markers.length < 2) return;
+    const size = map.current.getSize();
+    if (!size.x || !size.y) return;
+    map.current.fitBounds(lf.latLngBounds(markers.map((m) => [m.lat, m.lng] as [number, number])), { padding: [40, 40] });
+    fitted.current = true;
   }
 
   useEffect(() => {
+    fitLatest.current = fit;
     draw();
   });
 

@@ -7,16 +7,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Check, ChevronDown, Clock, House, Info, LayoutGrid, Mail, MapPin, Phone, ReceiptText, Search, ShoppingCart, Store, TriangleAlert, User } from 'lucide-react';
+import { Check, ChevronDown, CircleUser, House, Info, LayoutGrid, MapPin, ReceiptText, Search, ShoppingCart, Store, TriangleAlert, Truck, User } from 'lucide-react';
 import type { AppNotification, Fulfillment } from '@/src/lib/types';
 import { mutate, useStore } from '@/src/lib/store';
-import { distanceKm, findZone, getSetting, nearestBranch, OPEN_STATUSES } from '@/src/lib/logic';
+import { distanceKm, findZone, getSetting, nearestBranch, OPEN_STATUSES, pesoShort } from '@/src/lib/logic';
 import { cn } from '@/src/lib/utils';
-import { BrandIcon, BrandWordmark } from '@/src/components/brand/Brand';
+import { BrandIcon, BrandLogo } from '@/src/components/brand/Brand';
 import {
-  Container, DEMO_ADDRESSES, GUEST_ADDRESS, ShopContext, orderedTopCategories, routeHref, type Route, type ShopCtx, type ToastAction,
+  Container, DEMO_ADDRESSES, GUEST_ADDRESS, ShopContext, cartEstimate, orderedTopCategories, routeHref, type Route, type ShopCtx, type ToastAction,
 } from '@/src/components/shopper/shared';
 import { LocationSheet } from '@/src/components/shopper/LocationSheet';
+import { AccountMenu } from './AccountMenu';
 
 const ANIMATIONS = `
   @keyframes fm-slide-down{from{transform:translateY(-130%);opacity:0}to{transform:none;opacity:1}}
@@ -165,7 +166,7 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
       <style>{ANIMATIONS}</style>
       <div
         className={cn(
-          'flex-1 flex flex-col min-w-0 overflow-x-clip bg-[#faf6f2] text-[#2a2322] pb-[var(--tabbar-h)]',
+          'flex-1 flex flex-col min-w-0 overflow-x-clip bg-[#f5f1ec] text-[#2a2322] pb-[var(--tabbar-h)]',
           hideTabs
             ? '[--tabbar-h:0px] [--actionbar-safe:env(safe-area-inset-bottom)]'
             : '[--tabbar-h:calc(3.5rem_+_env(safe-area-inset-bottom))] [--actionbar-safe:0px] md:[--tabbar-h:0px]',
@@ -244,72 +245,125 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
 }
 
 // ====================== HEADER ======================
-function SiteHeader({ ctx, pathname, cartCount }: { ctx: ShopCtx; pathname: string; cartCount: number }) {
-  const { s, shopper, effMode, address, branch, openLocation } = ctx;
-  const cats = orderedTopCategories(s);
-  const firstName = shopper ? shopper.firstName || shopper.name.split(' ')[0] : '';
-  return (
-    <header className="sticky top-0 z-40 bg-[#2a2322] text-white shadow-[0_2px_12px_rgba(0,0,0,0.25)] pt-[env(safe-area-inset-top)]">
-      {/* Phone */}
-      <div className="md:hidden h-14 pl-2 pr-1 flex items-center gap-1">
-        <Link href="/" className="flex items-center gap-2 h-11 pl-1 pr-2 min-w-0 flex-1" aria-label="Jovanne’s Meat Shop home">
-          <BrandIcon className="h-9 w-9 rounded-lg ring-1 ring-white/10 shrink-0" />
-          <span className="font-display uppercase font-bold text-[22px] leading-none tracking-wide text-[#ec1b26] truncate">Jovanne’s</span>
-        </Link>
-        <Link href="/search" className="w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/10" aria-label="Search">
-          <Search className="w-5 h-5" />
-        </Link>
-        <Link href="/cart" className="relative w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/10" aria-label={`Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}`}>
-          <ShoppingCart className="w-5 h-5" />
-          {cartCount > 0 && <span className="absolute top-1 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#ec1b26] text-white text-[10px] font-bold flex items-center justify-center border-2 border-[#2a2322]">{cartCount > 99 ? '99+' : cartCount}</span>}
-        </Link>
-      </div>
+/** Header, footer and home page use a wider column than the inner pages (matches the website mockup). */
+const WIDE = 'max-w-[1280px]';
 
-      {/* Tablet / desktop */}
-      <div className="hidden md:block">
-        <Container className="h-[72px] flex items-center gap-4 lg:gap-6">
-          <Link href="/" className="flex items-center gap-3 shrink-0" aria-label="Jovanne’s Meat Shop home">
-            <BrandIcon className="h-12 w-12 rounded-xl ring-1 ring-white/10" />
-            <BrandWordmark size="md" />
-          </Link>
-          <HeaderSearch />
-          <nav className="flex items-center gap-1 shrink-0" aria-label="Account">
-            <Link href="/my-orders" className={cn('h-11 px-3 rounded-full hover:bg-white/10 flex items-center gap-2 text-sm', pathname.startsWith('/my-orders') && 'bg-white/10')}>
-              <ReceiptText className="w-5 h-5" /> <span className="hidden lg:inline">My orders</span>
-            </Link>
-            <Link href={shopper ? '/account' : '/signin'} className={cn('h-11 px-3 rounded-full hover:bg-white/10 flex items-center gap-2 text-sm max-w-[180px]', pathname.startsWith('/account') && 'bg-white/10')}>
-              <User className="w-5 h-5 shrink-0" /> <span className="hidden lg:inline truncate">{shopper ? `Hi, ${firstName}` : 'Sign in'}</span>
-            </Link>
-            <Link href="/cart" className="h-11 pl-3 pr-4 ml-1 rounded-full bg-[#c8151d] hover:bg-[#ec1b26] flex items-center gap-2 font-semibold text-sm transition" aria-label={`Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}`}>
-              <ShoppingCart className="w-5 h-5" /> Cart
-              <span className="min-w-6 h-6 px-1.5 rounded-full bg-white text-[#c8151d] text-xs font-bold flex items-center justify-center">{cartCount}</span>
-            </Link>
+function SiteHeader({ ctx, pathname, cartCount }: { ctx: ShopCtx; pathname: string; cartCount: number }) {
+  const { s, shopper, branch } = ctx;
+  const cats = orderedTopCategories(s);
+  const city = s.cities.find((c) => c.id === branch.cityId)?.name ?? 'Digos City';
+  const cartLabel = `Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}`;
+  // Signed-in customers see the estimated cart subtotal on the cart button; guests see "Cart".
+  const cartTotal = shopper && cartCount > 0 ? pesoShort(cartEstimate(s, branch.id)) : '';
+  const navItems = [{ id: '', name: 'All products', href: '/category' }, ...cats.map((c) => ({ id: c.id, name: c.name, href: `/category/${c.id}` }))];
+  return (
+    <>
+      {/* Top strip (tablet / desktop; scrolls away) */}
+      <div className="hidden md:block bg-[#1d1716] text-white/75 text-xs">
+        <Container className={cn(WIDE, 'h-9 flex items-center justify-between gap-4')}>
+          <p className="flex items-center gap-2 min-w-0">
+            <Truck className="w-4 h-4 shrink-0" /> <span className="truncate">Delivering across {city} · Open daily, {branch.hours}</span>
+          </p>
+          <nav className="flex items-center gap-5 shrink-0" aria-label="Help">
+            <Link href="/my-orders" className="hover:text-white">Track an order</Link>
+            <Link href="/help" className="hover:text-white">Help &amp; FAQs</Link>
+            <a href={`tel:${branch.phone.replace(/[^\d+]/g, '')}`} className="font-bold text-white">{branch.phone}</a>
           </nav>
         </Container>
-        <div className="bg-[#372e2f] border-t border-white/5">
-          <Container className="h-12 flex items-center gap-3">
-            <nav className="flex items-center gap-1 min-w-0 overflow-x-auto fm-noscroll" aria-label="Categories">
-              {cats.map((c, i) => {
-                const active = pathname === `/category/${c.id}`;
+      </div>
+
+      <header className="sticky top-0 z-40 bg-[#2a2322] pt-[env(safe-area-inset-top)] md:pt-0 shadow-[0_2px_12px_rgba(42,35,34,0.12)]">
+        <div className="text-white">
+          {/* Phone: logo, delivery area, cart — search on its own row */}
+          <div className="md:hidden h-14 px-3 flex items-center gap-2">
+            <Link href="/" className="shrink-0" aria-label="Jovanne’s Meat Shop home">
+              <BrandLogo className="h-9 rounded" />
+            </Link>
+            <LocationPill ctx={ctx} compact />
+            <Link href="/cart" className="relative shrink-0 w-11 h-11 rounded-lg bg-[#d6202a] flex items-center justify-center" aria-label={cartLabel}>
+              <ShoppingCart className="w-5 h-5" />
+              {cartCount > 0 && <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-[#c8151d] text-[10px] font-bold flex items-center justify-center">{cartCount > 99 ? '99+' : cartCount}</span>}
+            </Link>
+          </div>
+          {!pathname.startsWith('/search') && <div className="md:hidden px-3 pb-2.5"><HeaderSearch /></div>}
+
+          {/* Tablet / desktop */}
+          <Container className={cn(WIDE, 'hidden md:flex h-[68px] items-center gap-3 lg:gap-4')}>
+            <Link href="/" className="shrink-0" aria-label="Jovanne’s Meat Shop home">
+              <BrandLogo className="h-10 rounded" priority />
+            </Link>
+            <LocationPill ctx={ctx} />
+            <HeaderSearch />
+            {shopper ? (
+              <AccountMenu shopper={shopper} pathname={pathname} onSignOut={ctx.signOut} />
+            ) : (
+              <div className="shrink-0 flex items-center gap-2 px-1">
+                <CircleUser className="w-6 h-6 shrink-0" strokeWidth={1.75} aria-hidden />
+                <span className="leading-tight">
+                  <span className="hidden lg:block text-[11px] text-white/60">Welcome</span>
+                  <span className="block text-sm font-semibold whitespace-nowrap">
+                    <Link href="/signin" className="hover:underline">Sign in</Link>
+                    <span className="hidden lg:inline"> / <Link href="/signup" className="hover:underline">Register</Link></span>
+                  </span>
+                </span>
+              </div>
+            )}
+            {cartTotal ? (
+              <Link href="/cart" className="relative shrink-0 h-11 px-4 rounded-lg bg-[#d6202a] hover:bg-[#c8151d] flex items-center gap-2 font-semibold text-sm transition" aria-label={`${cartLabel}, about ${cartTotal}`}>
+                <ShoppingCart className="w-5 h-5" /> {cartTotal}
+                <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-[#d6202a] border-2 border-white text-white text-[10px] font-bold flex items-center justify-center">{cartCount > 99 ? '99+' : cartCount}</span>
+              </Link>
+            ) : (
+              <Link href="/cart" className="shrink-0 h-11 px-4 rounded-lg bg-[#d6202a] hover:bg-[#c8151d] flex items-center gap-2 font-semibold text-sm transition" aria-label={cartLabel}>
+                <ShoppingCart className="w-5 h-5" /> Cart
+                {cartCount > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-white text-[#c8151d] text-[11px] font-bold flex items-center justify-center">{cartCount > 99 ? '99+' : cartCount}</span>}
+              </Link>
+            )}
+          </Container>
+        </div>
+
+        {/* Category bar (scrolls sideways on phones) */}
+        <div className="bg-white border-b border-[#eadfd6] text-[#2a2322]">
+          <Container className={cn(WIDE, 'px-0 md:px-6')}>
+            <nav className="flex items-stretch gap-1 h-11 overflow-x-auto fm-noscroll px-2 md:px-0" aria-label="Categories">
+              {navItems.map((c) => {
+                const active = c.id ? pathname === c.href : pathname === '/' || pathname === '/category';
                 return (
-                  <Link key={c.id} href={`/category/${c.id}`} className={cn('h-9 px-3 rounded-full text-sm whitespace-nowrap flex items-center gap-1.5 transition',
-                    active ? 'bg-[#c8151d] text-white' : 'text-white/85 hover:bg-white/10 hover:text-white',
-                    i < 3 && 'font-display uppercase tracking-wider font-semibold text-[15px]')}>
-                    <span aria-hidden>{c.icon}</span> {c.name}
+                  <Link key={c.href} href={c.href} aria-current={active ? 'page' : undefined}
+                    className={cn('px-3 shrink-0 whitespace-nowrap text-[13px] flex items-center border-b-2 transition',
+                      active ? 'border-[#c8151d] font-semibold text-[#2a2322]' : 'border-transparent text-[#2a2322]/75 hover:text-[#c8151d]')}>
+                    {c.name}
                   </Link>
                 );
               })}
-              <Link href="/category" className={cn('h-9 px-3 rounded-full text-sm whitespace-nowrap flex items-center text-white/70 hover:bg-white/10 hover:text-white', pathname === '/category' && 'bg-white/10 text-white')}>All categories</Link>
             </nav>
-            <button onClick={openLocation} className="ml-auto shrink-0 h-9 px-3 rounded-full hover:bg-white/10 text-sm text-white/85 flex items-center gap-1.5 max-w-[40%] lg:max-w-[30%]">
-              {effMode === 'delivery' ? <MapPin className="w-4 h-4 text-[#ae754d] shrink-0" /> : <Store className="w-4 h-4 text-[#ae754d] shrink-0" />}
-              <span className="truncate">{effMode === 'delivery' ? `Deliver to ${shopper ? address.label : 'Digos City'} · ${branch.name}` : `Pickup at ${branch.name}`}</span>
-              <ChevronDown className="w-4 h-4 shrink-0" />
-            </button>
           </Container>
         </div>
-      </div>
-    </header>
+      </header>
+    </>
+  );
+}
+
+/** "Delivery area" button — opens the address / branch sheet. */
+function LocationPill({ ctx, compact }: { ctx: ShopCtx; compact?: boolean }) {
+  const { s, shopper, effMode, address, branch, openLocation } = ctx;
+  const delivery = effMode === 'delivery';
+  // "Purok 3, Dawis, Digos City" → "Dawis, Digos City · about 45 min" (ETA from the delivery zone).
+  const area = address.line.split(',').map((x) => x.trim()).filter((x) => x && !/^purok\b/i.test(x)).join(', ');
+  const eta = findZone(s, branch, address)?.etaMins;
+  const label = !delivery ? 'Pickup' : shopper ? `Deliver to ${address.label}` : 'Delivery area';
+  const value = !delivery ? `Pickup at ${branch.name} branch` : shopper ? `${area}${eta ? ` · about ${eta} min` : ''}` : 'Set your barangay to see fees';
+  return (
+    <button onClick={openLocation}
+      className={cn('min-w-0 h-11 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 px-2.5 flex items-center gap-2 text-left transition',
+        compact ? 'flex-1' : 'shrink-0 w-[190px] lg:w-[220px]')}>
+      {delivery ? <MapPin className="w-4 h-4 shrink-0 text-white/80" /> : <Store className="w-4 h-4 shrink-0 text-white/80" />}
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block text-[11px] text-white/60 truncate">{label}</span>
+        <span className="block text-xs font-semibold truncate">{value}</span>
+      </span>
+      <ChevronDown className="w-4 h-4 shrink-0 text-white/70" />
+    </button>
   );
 }
 
@@ -320,65 +374,61 @@ function HeaderSearch() {
     <form
       role="search"
       onSubmit={(e) => { e.preventDefault(); const t = q.trim(); router.push(t ? `/search?q=${encodeURIComponent(t)}` : '/search'); }}
-      className="relative flex-1 min-w-0 max-w-xl"
+      className="relative flex-1 min-w-0"
     >
-      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
       <input
+        type="search"
+        enterKeyHint="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search liempo, brisket, chicken…"
+        placeholder="Search for a cut or product"
         aria-label="Search products"
-        className="w-full h-11 rounded-full bg-white pl-11 pr-24 text-sm text-gray-900 outline-none focus:ring-4 focus:ring-[#ec1b26]/30"
+        className="w-full h-10 md:h-11 rounded-lg bg-white pl-10 pr-3 text-base md:text-sm text-gray-900 placeholder:text-gray-500 outline-none focus:ring-4 focus:ring-[#d6202a]/30 [&::-webkit-search-cancel-button]:hidden"
       />
-      <button type="submit" className="absolute right-1 top-1 h-9 px-4 rounded-full bg-[#c8151d] hover:bg-[#a3111a] text-white text-sm font-semibold">Search</button>
     </form>
   );
 }
 
 // ====================== FOOTER ======================
 function SiteFooter({ ctx }: { ctx: ShopCtx }) {
-  const { s } = ctx;
-  const branches = s.branches.filter((b) => b.status !== 'closed');
-  const cats = orderedTopCategories(s);
+  const { s, branch } = ctx;
+  const shopCats = orderedTopCategories(s).filter((c) => c.id !== 'cat-grocery').slice(0, 5);
+  const head = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-white mb-3';
+  const link = 'inline-flex items-center min-h-8 hover:text-white';
   return (
-    <footer className="bg-[#2a2322] text-white/80 mt-12">
-      <div className="h-1 bg-gradient-to-r from-[#c8151d] via-[#ec1b26] to-[#ae754d]" />
-      <Container className="py-10 grid grid-cols-1 gap-8 md:grid-cols-[1.2fr_1fr_1fr]">
-        <div>
-          <div className="flex items-center gap-3">
-            <BrandIcon className="h-14 w-14 rounded-xl ring-1 ring-white/10" />
-            <BrandWordmark size="md" />
-          </div>
-          <p className="font-display uppercase tracking-[0.25em] text-[#ae754d] text-sm mt-4">Premium Quality Meats</p>
-          <p className="text-sm mt-2 text-white/70 max-w-sm">Fresh beef, pork and chicken, cut the way you like and delivered cold around Digos City — or ready for pickup at the counter.</p>
+    <footer className="bg-[#2a2322] text-white/70 text-[13px] mt-12">
+      <Container className={cn(WIDE, 'py-10 md:py-12 grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-[1.6fr_1fr_1fr_1fr]')}>
+        <div className="col-span-2 md:col-span-1">
+          <Link href="/" aria-label="Jovanne’s Meat Shop home" className="inline-block"><BrandLogo className="h-10 rounded" /></Link>
+          <p className="mt-4 max-w-xs leading-relaxed">Fresh beef, pork and chicken, cut to order and delivered cold across Digos City, or ready for pickup.</p>
         </div>
         <div>
-          <h3 className="font-display uppercase tracking-wider text-white text-base font-semibold mb-3">Visit our branch</h3>
-          <ul className="space-y-4">
-            {branches.map((b) => (
-              <li key={b.id} className="text-sm space-y-1.5">
-                <p className="font-semibold text-white">{b.name} branch</p>
-                <p className="flex gap-2"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-[#ae754d]" /> {b.address}</p>
-                <p className="flex gap-2"><Clock className="w-4 h-4 mt-0.5 shrink-0 text-[#ae754d]" /> Open daily · {b.hours}</p>
-                <a href={`tel:${b.phone.replace(/[^\d+]/g, '')}`} className="flex gap-2 hover:text-white min-h-6"><Phone className="w-4 h-4 mt-0.5 shrink-0 text-[#ae754d]" /> {b.phone}</a>
-                <a href={`mailto:${b.email}`} className="flex gap-2 hover:text-white break-all"><Mail className="w-4 h-4 mt-0.5 shrink-0 text-[#ae754d]" /> {b.email}</a>
-              </li>
-            ))}
+          <h3 className={head}>Shop</h3>
+          <ul>{shopCats.map((c) => <li key={c.id}><Link href={`/category/${c.id}`} className={link}>{c.name}</Link></li>)}</ul>
+        </div>
+        <div>
+          <h3 className={head}>Customer service</h3>
+          <ul>
+            <li><Link href="/my-orders" className={link}>Track an order</Link></li>
+            <li><Link href="/help" className={link}>Delivery areas &amp; fees</Link></li>
+            <li><Link href="/help" className={link}>How sold-by-weight works</Link></li>
+            <li><Link href="/help" className={link}>Returns &amp; refunds</Link></li>
           </ul>
         </div>
-        <div>
-          <h3 className="font-display uppercase tracking-wider text-white text-base font-semibold mb-3">Shop</h3>
-          <ul className="grid grid-cols-2 md:grid-cols-1 gap-x-4 text-sm">
-            {cats.map((c) => <li key={c.id}><Link href={`/category/${c.id}`} className="inline-flex items-center min-h-9 hover:text-white">{c.name}</Link></li>)}
-            <li><Link href="/my-orders" className="inline-flex items-center min-h-9 hover:text-white">My orders</Link></li>
-            <li><Link href="/help" className="inline-flex items-center min-h-9 hover:text-white">Help &amp; FAQ</Link></li>
+        <div className="col-span-2 md:col-span-1">
+          <h3 className={head}>Visit us</h3>
+          <ul className="space-y-2">
+            <li>{branch.address}</li>
+            <li>Open daily, {branch.hours}</li>
+            <li><a href={`tel:${branch.phone.replace(/[^\d+]/g, '')}`} className="hover:text-white">{branch.phone}</a></li>
           </ul>
         </div>
       </Container>
       <div className="border-t border-white/10">
-        <Container className="py-4 text-xs text-white/55 flex flex-col sm:flex-row justify-between gap-1">
-          <span>© {new Date().getFullYear()} Jovanne’s Meat Shop · Digos City, Davao del Sur</span>
-          <span>Demo website · your account and orders are saved in this browser only · <Link href="/credits" className="underline hover:text-white">Photo credits</Link></span>
+        <Container className={cn(WIDE, 'py-4 text-xs text-white/55 flex flex-col sm:flex-row justify-between gap-1')}>
+          <span>© {new Date().getFullYear()} Jovanne’s Meat Shop · Digos City · <Link href="/credits" className="underline hover:text-white">Photo credits</Link></span>
+          <span>We accept GCash, Maya, Visa, Mastercard and cash on delivery</span>
         </Container>
       </div>
     </footer>

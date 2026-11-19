@@ -5,7 +5,7 @@ import type {
 } from './types';
 
 // Bump when the seed shape changes: browsers holding an older version reseed once.
-export const STATE_VERSION = 26;
+export const STATE_VERSION = 28;
 
 // Deterministic pseudo-random so the seed looks the same on every reset.
 function rng(seed: number) {
@@ -520,8 +520,19 @@ const customers: Customer[] = customerSeed.map((c, i) => ({
   mobile: c[1],
   email: c[2],
   cityId: 'c-dgs',
-  addresses: [{ label: 'Home', line: c[3], landmark: i === 0 ? 'Blue gate near the chapel' : undefined, lat: c[4], lng: c[5] }],
+  addresses: [
+    { label: 'Home', line: c[3], landmark: i === 0 ? 'Blue gate near the chapel' : undefined, lat: c[4], lng: c[5], ...(i === 0 ? { recipient: c[0], phone: c[1] } : {}) },
+    // Demo customer (Maria Santos) also has a saved office address.
+    ...(i === 0 ? [{ label: 'Office' as const, line: '2F Rizal Building, Zone 2, Digos City', landmark: 'Ask the guard to call · weekdays 8 AM–5 PM', lat: 6.7508, lng: 125.3561 }] : []),
+  ],
   createdAt: daysAgo(60 - i * 4),
+  ...(i === 0 ? {
+    customerSince: '2025-03-14T09:00:00.000Z',
+    paymentMethods: [
+      { id: 'pm-cod', kind: 'cod' as const, label: 'Cash on delivery', isDefault: true },
+      { id: 'pm-gcash', kind: 'gcash' as const, label: 'GCash', detail: '0917 ••• 4567' },
+    ],
+  } : {}),
   blocked: false,
   storeCredit: 0,
   points: 0,
@@ -970,7 +981,8 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
     const n = rd.codOrders ?? 1;
     const firstAgo = rd.codSince ? Math.round((Date.now() - Date.parse(rd.codSince)) / 60_000) : 60;
     for (let k = 0; k < n; k++) {
-      const amount = k < n - 1 ? Math.round(rd.codHeld / n) : rd.codHeld - Math.round(rd.codHeld / n) * (n - 1);
+      // Jomar Villar (Rider App demo): ₱570 + ₱680 = his ₱1,250.
+      const amount = rd.id === 'r-1' && n === 2 ? [570, 680][k] : k < n - 1 ? Math.round(rd.codHeld / n) : rd.codHeld - Math.round(rd.codHeld / n) * (n - 1);
       const doneAgo = Math.max(5, firstAgo - k * 35);
       const cu = customers[(Number(rd.id.slice(2)) * 3 + k) % customers.length];
       const items = buildItems(r, 2).map((i) => ({ ...i, pickStatus: 'picked' as const, actualWeightKg: i.soldByWeight ? i.estWeightKg ?? 1 : undefined }));
@@ -998,6 +1010,64 @@ function makeOrders(): { orders: Order[]; saleMovements: StockMovement[] } {
       });
       for (const i of items) saleMovements.push({ id: `ms-${id}-${i.productId}`, productId: i.productId, branchId: b.id, qty: -sold(i), type: 'online_sale', reason: 'Order completed', user: 'System', at: at(0), ref: number });
     }
+  }
+
+  // Rider App demo for Jomar Villar (r-1), appended so every order number above stays the same.
+  // Three earlier trips today: with his delivered live order (2.6 km) and two COD orders (0.9 + 1.1 km) that is
+  // 6 trips, 22.5 km → 6 × ₱60 + 22.5 km × ₱8 = ₱540, his earningsToday. Addresses are placed at exact distances.
+  const jomar = riders[0];
+  const spot = (line: string, lat: number, lng: number): NonNullable<Order['address']> => ({ label: 'Home', line, lat, lng });
+  const earlier: [number, NonNullable<Order['address']>, number, PaymentMethod, number?][] = [
+    [1, spot('Tres de Mayo, Digos City', 6.778, 125.3349), 400, 'gcash'], // 4.0 km
+    [9, spot('Purok 4, Aplaya, Digos City', 6.6983, 125.3871), 535, 'maya', 4], // 6.6 km
+    [8, spot('Tiguman, Digos City', 6.8071, 125.3251), 680, 'gcash'], // 7.3 km
+  ];
+  for (const [cIdx, address, doneAgo, pm, stars] of earlier) {
+    const cu = customers[cIdx];
+    const items = buildItems(r, 2 + (doneAgo % 3)).map((i) => ({ ...i, pickStatus: 'picked' as const, actualWeightKg: i.soldByWeight ? i.estWeightKg ?? 1 : undefined }));
+    const subtotal = Math.round(items.reduce((s, i) => s + lineTotal(i), 0) * 100) / 100;
+    const serviceFee = Math.round(subtotal * 0.02);
+    const id = `o-${num}`;
+    const number = `${b.code}-${num++}`;
+    const at = (m: number) => minsAgo(doneAgo + m);
+    const cold = isCold(items);
+    orders.push({
+      id, number, branchId: b.id, customerId: cu.id, customerName: cu.name, customerMobile: cu.mobile, channel: 'app', fulfillment: 'delivery',
+      address, slot: 'ASAP', items, subtotal, deliveryFee: 59, serviceFee, discount: 0, total: subtotal + 59 + serviceFee,
+      feeRule: 'Digos City 0–6 km · ₱49 + ₱10/km', paymentMethod: pm, paymentStatus: 'paid', refundedAmount: 0, status: 'delivered',
+      autoConfirmed: true, riderId: jomar.id, pickupPin: PIN(r), prepMinutes: 25, placedAt: at(75), updatedAt: at(0), outForDeliveryAt: at(30), completedAt: at(0),
+      timeline: [
+        { status: 'placed', at: at(75), by: cu.name }, { status: 'confirmed', at: at(74), by: 'System (auto-confirm)' }, { status: 'preparing', at: at(65), by: 'Ana Cruz' },
+        { status: 'ready', at: at(42), by: 'Ana Cruz' }, { status: 'rider', at: at(40), by: 'Ana Cruz', note: `Rider assigned: ${jomar.name} (motorcycle)` },
+        { status: 'out_for_delivery', at: at(30), by: 'Rider' }, { status: 'delivered', at: at(0), by: 'Rider' },
+      ],
+      rating: stars ? { order: 5, rider: stars, tags: [] } : undefined,
+      internalNotes: [], acknowledged: true, coldChain: cold, maxDeliveryMins: cold ? 60 : undefined, insulatedPacked: true, bagCount: 1, riderBagConfirmed: true,
+    });
+    for (const i of items) saleMovements.push({ id: `ms-${id}-${i.productId}`, productId: i.productId, branchId: b.id, qty: -sold(i), type: 'online_sale', reason: 'Order completed', user: 'System', at: at(0), ref: number });
+  }
+
+  // A job offer from dispatch waiting for Jomar to accept (Aplaya, 4.8 km, cash on delivery ₱860).
+  {
+    const cu = customers[17];
+    const items = buildItems(r, 3).map((i) => ({ ...i, pickStatus: 'picked' as const, actualWeightKg: i.soldByWeight ? i.estWeightKg ?? 1 : undefined }));
+    const f = (860 - 59) / items.reduce((s, i) => s + lineTotal(i), 0);
+    items.forEach((i) => { i.unitPrice = Math.round(i.unitPrice * f * 100) / 100; });
+    const subtotal = Math.round(items.reduce((s, i) => s + lineTotal(i), 0) * 100) / 100;
+    const fee = Math.round((860 - subtotal) * 100) / 100;
+    const cold = isCold(items);
+    orders.push({
+      id: `o-${num}`, number: `${b.code}-${num++}`, branchId: b.id, customerId: cu.id, customerName: cu.name, customerMobile: cu.mobile, channel: 'app', fulfillment: 'delivery',
+      address: spot('Purok 1, Aplaya, Digos City', 6.7166, 125.3851), slot: 'ASAP', items, subtotal, deliveryFee: fee, serviceFee: 0, discount: 0, total: 860,
+      feeRule: 'Digos City 0–6 km · ₱49 + ₱10/km', paymentMethod: 'cod', paymentStatus: 'pending', refundedAmount: 0, status: 'ready',
+      autoConfirmed: false, riderId: jomar.id, pickupPin: PIN(r), prepMinutes: 25, placedAt: minsAgo(30), updatedAt: minsAgo(1),
+      timeline: [
+        { status: 'placed', at: minsAgo(30), by: cu.name }, { status: 'confirmed', at: minsAgo(28), by: 'Ana Cruz' }, { status: 'preparing', at: minsAgo(26), by: 'Ana Cruz' },
+        { status: 'edit', at: minsAgo(8), by: 'Ana Cruz', note: `Pack check: 1 bag(s)${cold ? ', packed in insulated bag with ice packs' : ''}, labeled` },
+        { status: 'ready', at: minsAgo(6), by: 'Ana Cruz' }, { status: 'rider', at: minsAgo(1), by: 'Ana Cruz', note: `Rider assigned: ${jomar.name} (motorcycle)` },
+      ],
+      internalNotes: [], acknowledged: true, coldChain: cold, maxDeliveryMins: cold ? 60 : undefined, insulatedPacked: true, bagCount: 1,
+    });
   }
   return { orders, saleMovements };
 }

@@ -413,7 +413,10 @@ export function applyStatus(s: AppState, orderId: string, status: OrderStatus, o
     }
     if (o.riderId) {
       const r = s.riders.find((x) => x.id === o.riderId);
-      if (r) { r.tripsToday += 1; r.earningsToday += 60 + Math.round(o.deliveryFee * 0.5); }
+      // Same pay rule as the Rider App (PAY_RULES in delivery/helpers): ₱60 per trip + ₱8 per km from the branch.
+      const b = s.branches.find((x) => x.id === o.branchId);
+      const km = b && o.address ? distanceKm(b, o.address) : 0;
+      if (r) { r.tripsToday += 1; r.earningsToday += Math.round(60 + 8 * km); }
     }
   }
   if (status === 'cancelled') {

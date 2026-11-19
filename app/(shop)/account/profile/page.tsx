@@ -1,13 +1,6 @@
-import type { Metadata } from 'next';
-import { RequireAuth } from '@/src/components/shop/RequireAuth';
-import { ProfileScreen } from '@/src/components/shopper/AccountScreens';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Edit profile' };
-
+// Personal details now live on /account; keep old links working.
 export default function ProfilePage() {
-  return (
-    <RequireAuth>
-      <ProfileScreen />
-    </RequireAuth>
-  );
+  redirect('/account');
 }

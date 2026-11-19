@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
 import { RequireAuth } from '@/src/components/shop/RequireAuth';
-import { NotificationsScreen } from '@/src/components/shopper/AccountScreens';
+import { NotificationSettingsScreen } from '@/src/components/shopper/AccountPages';
 
 export const metadata: Metadata = { title: 'Notifications' };
 
 export default function NotificationsPage() {
   return (
     <RequireAuth>
-      <NotificationsScreen />
+      <NotificationSettingsScreen />
     </RequireAuth>
   );
 }

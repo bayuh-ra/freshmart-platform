@@ -2,15 +2,18 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Bike, Check, ChevronRight, CircleCheck, Clock, CreditCard, LoaderCircle, MapPin, MessageSquareText, Pencil, ShieldCheck, Snowflake, Store, Ticket, Trash2, TriangleAlert, Wallet } from 'lucide-react';
-import type { Fulfillment, PaymentMethod } from '@/src/lib/types';
+import {
+  ArrowLeft, Bike, Check, ChevronRight, CircleCheck, Clock, CreditCard, LoaderCircle, MapPin, Minus, Plus, Scale, ShieldCheck, ShoppingCart, Snowflake, SquarePen, Store, Ticket, Trash2,
+  TriangleAlert, Wallet,
+} from 'lucide-react';
+import type { Fulfillment, PaymentMethod, Product } from '@/src/lib/types';
 import { mutate } from '@/src/lib/store';
 import { applyVoucher, available, calcDeliveryFee, cutFeeText, getPriceInfo, getSetting, num, ONLINE_METHODS, PAYMENT_LABEL, peso, placeOrder, pesoShort, slotBookable } from '@/src/lib/logic';
 import { moduleOn } from '@/src/lib/platform';
 import { cn } from '@/src/lib/utils';
 import {
-  Card, Container, DEFAULT_SUB_PREF, MobileActionBar, PrimaryButton, ProductImage, ScreenHeader, Stepper, StorageBadge, WeightStepper, cartRemove, cartUpdate, cutById, cutsFor,
-  fmtKg, isCold, lineEst, lineKey, lineWeight, makeSlots, meatMaxMins, minKg, useMe, useShop,
+  Card, Container, DEFAULT_SUB_PREF, MobileActionBar, PrimaryButton, ProductImage, ScreenHeader, Sheet, cartRemove, cartUpdate, cutById, cutsFor,
+  fmtKg, isCold, lineEst, lineKey, lineWeight, makeSlots, meatMaxMins, minKg, roundKg, useMe, useShop,
 } from './shared';
 
 /** Cart lines with estimated totals: weight × price/kg (or qty × price) + cut charge — same as lineTotal(). */
@@ -48,51 +51,98 @@ function ColdChainNotice({ fulfillment, mins }: { fulfillment: Fulfillment; mins
 const editHref = (productId: string, key: string) => `/products/${productId}?edit=${encodeURIComponent(key)}`;
 
 // ====================== CART ======================
+/** "₱360" for whole amounts, "₱312.50" otherwise. */
+const money = (n: number) => (Math.round(n * 100) % 100 === 0 ? pesoShort(n) : peso(n));
+
+/** Street part of an address line without the city: "Purok 3, Dawis, Digos City" → "Purok 3, Dawis". */
+const streetPart = (line: string) => line.split(',').map((x) => x.trim()).filter((x) => x && !/digos city|davao/i.test(x)).join(', ') || line;
+/** Neighbourhood and city: "Purok 3, Dawis, Digos City" → "Dawis, Digos City". */
+const areaPart = (line: string) => line.split(',').map((x) => x.trim()).filter(Boolean).slice(-2).join(', ');
+
+/** Weight step for the cart stepper: the smallest gap between the product's preset weights (0.25 kg by default). */
+function weightStep(p: Product) {
+  const ch = [...(p.weightChoices ?? [])].sort((a, b) => a - b);
+  let step = Infinity;
+  for (let i = 1; i < ch.length; i++) step = Math.min(step, ch[i] - ch[i - 1]);
+  return Number.isFinite(step) && step >= 0.25 ? roundKg(step) : 0.25;
+}
+const unitWord = (p: Product) => (p.soldByWeight ? 'kg' : p.unit === 'pack' ? 'pack' : 'piece');
+const qtyLabel = (p: Product, n: number) => (p.unit === 'pack' ? `${n} pack${n === 1 ? '' : 's'}` : `${n} pc${n === 1 ? '' : 's'}`);
+
+/** Outlined "− 1 kg +" box. */
+function QtyBox({ label, onMinus, onPlus, minusDisabled, plusDisabled, what }: { label: string; onMinus: () => void; onPlus: () => void; minusDisabled?: boolean; plusDisabled?: boolean; what: string }) {
+  return (
+    <div className="inline-flex items-center h-12 w-[160px] rounded-lg border border-[#d9ccc1] bg-white">
+      <button type="button" onClick={onMinus} disabled={minusDisabled} className="w-11 h-full flex items-center justify-center rounded-l-lg hover:bg-[#f4efea] disabled:opacity-35" aria-label={`Less ${what}`}><Minus className="w-4 h-4" /></button>
+      <span className="flex-1 text-center text-sm font-semibold tabular-nums whitespace-nowrap" aria-live="polite">{label}</span>
+      <button type="button" onClick={onPlus} disabled={plusDisabled} className="w-11 h-full flex items-center justify-center rounded-r-lg hover:bg-[#f4efea] disabled:opacity-35" aria-label={`More ${what}`}><Plus className="w-4 h-4" /></button>
+    </div>
+  );
+}
+
+const CART_GRID = 'md:grid-cols-[minmax(0,1fr)_160px_120px] md:gap-6';
+
 export function CartScreen() {
-  const { s, shopper, branch, go, effMode, flash } = useShop();
+  const { s, shopper, branch, go, effMode, setMode, deliveryOk, deliveryBlockReason, address, openLocation, flash } = useShop();
   const lines = useCartLines();
-  const [noteOpen, setNoteOpen] = useState<string | null>(null);
+  const [clearOpen, setClearOpen] = useState(false);
   const okLines = lines.filter((l) => l.avail > 0);
   const subtotal = Math.round(okLines.reduce((n, l) => n + l.total, 0) * 100) / 100;
   const minOrder = num(getSetting(s, 'minOrder', branch.id));
   const unavailable = lines.filter((l) => l.avail === 0);
   const short = lines.filter((l) => l.avail > 0 && !l.p.soldByWeight && l.c.qty > l.avail);
   const belowMin = subtotal < minOrder;
-  const hasWeighted = lines.some((l) => l.p.soldByWeight);
+  const hasWeighted = okLines.some((l) => l.p.soldByWeight);
+  const approx = hasWeighted ? '≈ ' : '';
   const cold = okLines.some((l) => isCold(l.p));
+  const prep = num(getSetting(s, 'prepMinutes', branch.id)) || 20;
+  const canPickup = branch.services.pickup;
+  const dz = deliveryOk ? calcDeliveryFee(s, branch.id, subtotal, address) : null;
+  const eta = dz?.zone?.etaMins ?? 45;
+  const delivery = effMode === 'delivery';
+  const deliveryFee = delivery ? dz?.fee ?? 0 : 0;
+  const estTotal = Math.round((subtotal + deliveryFee) * 100) / 100;
+  const freeAbove = delivery ? dz?.zone?.freeAbove : undefined;
 
   if (!lines.length) {
     return (
-      <Container className="pb-6">
-        <ScreenHeader title="My cart" back={false} />
-        <div className="flex flex-col items-center justify-center text-center px-6 py-16">
-          <span className="text-6xl" aria-hidden>🛒</span>
+      <Container className="max-w-[1280px] pb-10">
+        <CartHeading />
+        <div className="mt-6 rounded-xl border border-[#eadfd6] bg-[#fffdfb] flex flex-col items-center justify-center text-center px-6 py-16">
+          <ShoppingCart className="w-12 h-12 text-gray-300" aria-hidden />
           <p className="text-lg font-semibold mt-4">Your cart is empty</p>
           <p className="text-sm text-gray-600 mt-1">Fresh meat from our {branch.name} branch is a few clicks away.</p>
-          <Link href="/category" className="mt-6 h-12 px-8 rounded-full bg-[#c8151d] hover:bg-[#a3111a] text-white font-semibold text-sm inline-flex items-center">Start shopping</Link>
+          <Link href="/category" className="mt-6 h-12 px-8 rounded-lg bg-[#c8151d] hover:bg-[#a3111a] text-white font-semibold text-sm inline-flex items-center">Start shopping</Link>
         </div>
       </Container>
     );
   }
 
+  const checkoutLabel = belowMin ? `Minimum order ${pesoShort(minOrder)}` : shopper ? 'Proceed to checkout' : 'Sign in to check out';
   const checkoutBtn = (
-    <PrimaryButton disabled={belowMin || okLines.length === 0} onClick={() => go({ name: 'checkout' })}>
-      {belowMin ? `Minimum order ${pesoShort(minOrder)}` : shopper ? 'Proceed to checkout' : 'Sign in to check out'}
-    </PrimaryButton>
+    <button
+      onClick={() => go({ name: 'checkout' })} disabled={belowMin || okLines.length === 0}
+      className="w-full h-12 md:h-14 rounded-lg bg-[#c8151d] hover:bg-[#a3111a] text-white font-semibold text-base disabled:bg-gray-300 disabled:text-gray-600 transition"
+    >
+      {checkoutLabel}
+    </button>
   );
 
   return (
-    <Container className="pb-6">
-      <ScreenHeader
-        title="My cart"
-        sub={`${lines.length} item${lines.length === 1 ? '' : 's'} · ${effMode === 'delivery' ? 'Delivery' : 'Pickup'} from ${branch.name}`}
-        back={false}
-        right={<button onClick={() => { mutate((d) => { d.cart = []; }); flash('Cart cleared', 'info'); }} className="min-h-11 text-sm text-gray-600 hover:text-[#c8151d] px-2">Clear cart</button>}
+    <Container className="max-w-[1280px] pb-10">
+      <CartHeading
+        sub={`${lines.length} item${lines.length === 1 ? '' : 's'} · ${delivery ? `Delivery to ${areaPart(address.line)}` : `Pickup at ${branch.name}`}`}
+        right={
+          <button onClick={() => setClearOpen(true)} className="min-h-11 shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#c8151d]">
+            <Trash2 className="w-4 h-4" /> Remove all<span className="hidden sm:inline"> items</span>
+          </button>
+        }
       />
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_320px] lg:grid-cols-[minmax(0,1fr)_360px] md:gap-6 items-start">
-        <div className="space-y-3 min-w-0">
+
+      <div className="mt-5 md:mt-7 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-6 items-start">
+        <div className="min-w-0 space-y-3">
           {(unavailable.length > 0 || short.length > 0) && (
-            <div className="rounded-2xl bg-[#fdecec] border border-[#f5c6c8] p-3 text-xs md:text-sm text-[#7d0d12] flex gap-2">
+            <div className="rounded-xl bg-[#fdecec] border border-[#f5c6c8] p-3 text-xs md:text-sm text-[#7d0d12] flex gap-2">
               <TriangleAlert className="w-4 h-4 shrink-0 text-[#c8151d] mt-0.5" />
               <div>
                 {unavailable.length > 0 && <p><b>{unavailable.length} item{unavailable.length > 1 ? 's are' : ' is'} no longer available</b> at {branch.name} and will not be ordered.</p>}
@@ -100,95 +150,207 @@ export function CartScreen() {
               </div>
             </div>
           )}
-          {cold && <ColdChainNotice fulfillment={effMode} mins={meatMaxMins(s, branch.id)} />}
 
-          {lines.map((l) => {
-            const cuts = cutsFor(s, l.p);
-            return (
-              <Card key={l.key} className={cn('p-3 md:p-4', l.avail === 0 && 'opacity-80')}>
-                <div className="flex gap-3">
-                  <Link href={editHref(l.p.id, l.key)} aria-label={`Edit ${l.p.name}`} className="shrink-0">
-                    <ProductImage emoji={l.p.image} size="sm" className="w-16 h-16 md:w-20 md:h-20 rounded-xl" />
-                  </Link>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <Link href={`/products/${l.p.id}`} className="text-sm md:text-base font-semibold leading-tight hover:text-[#c8151d]">{l.p.name}</Link>
-                      <button onClick={() => cartRemove(l.key)} className="w-11 h-11 -mr-2 -mt-2 shrink-0 rounded-full flex items-center justify-center text-gray-400 hover:text-[#c8151d] hover:bg-[#fdecec]" aria-label={`Remove ${l.p.name}`}><Trash2 className="w-4 h-4" /></button>
+          <div className="rounded-xl border border-[#eadfd6] bg-[#fffdfb] overflow-hidden">
+            <div className={cn(CART_GRID, 'hidden md:grid px-5 py-3 border-b border-[#eadfd6] text-[11px] font-semibold tracking-[0.08em] text-gray-500 uppercase')}>
+              <span>Product</span><span className="text-center">Quantity</span><span className="text-right">Est. total</span>
+            </div>
+            {lines.map((l) => {
+              const cuts = cutsFor(s, l.p);
+              const step = weightStep(l.p);
+              const storage = l.p.storage === 'fresh' ? 'Kept chilled' : l.p.storage === 'frozen' ? 'Kept frozen' : '';
+              return (
+                <div key={l.key} className={cn(CART_GRID, 'grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 md:px-5 py-4 md:py-5 border-b border-[#f0e7df]')}>
+                  {/* Product */}
+                  <div className="contents md:flex md:gap-4 md:min-w-0">
+                    <Link href={editHref(l.p.id, l.key)} aria-label={`Edit ${l.p.name}`} className={cn('shrink-0 row-span-2 md:row-auto', l.avail === 0 && 'opacity-60')}>
+                      <ProductImage emoji={l.p.image} size="sm" className="w-[72px] h-[72px] md:w-[110px] md:h-[110px] rounded-lg" />
+                    </Link>
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/products/${l.p.id}`} className="text-base md:text-lg font-semibold text-[#2a2322] leading-snug hover:text-[#c8151d]">{l.p.name}</Link>
+                      <p className="text-sm text-gray-600 mt-0.5">
+                        {money(l.info.price)} per {unitWord(l.p)}
+                        {storage && <> · <span className="font-semibold text-[#1f6b3f]">{storage}</span></>}
+                      </p>
+                      {l.avail === 0 ? (
+                        <p className="text-xs font-semibold text-[#a3111a] mt-1">Unavailable at {branch.name}. Remove this item.</p>
+                      ) : !l.p.soldByWeight && l.c.qty > l.avail ? (
+                        <p className="text-xs font-semibold text-amber-800 mt-1">Only {l.avail} available</p>
+                      ) : null}
+                      {l.avail > 0 && cuts.length > 0 && (
+                        <label className="mt-2.5 flex items-center gap-2.5 text-sm">
+                          <span className="font-medium text-gray-700">Preparation</span>
+                          <select
+                            value={l.c.cutId ?? ''} onChange={(e) => cartUpdate(l.key, { cutId: e.target.value || null })}
+                            className="h-11 min-w-0 flex-1 sm:flex-none max-w-[220px] rounded-lg border border-[#d9ccc1] bg-white pl-3 pr-8 text-base md:text-sm text-[#2a2322] outline-none focus:border-[#2a2322]"
+                          >
+                            {!l.c.cutId && <option value="">Choose</option>}
+                            {cuts.map((c) => <option key={c.id} value={c.id}>{c.name}{cutFeeText(c) ? ` (${cutFeeText(c)})` : ''}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      {l.avail > 0 && (
+                        <label className="mt-2.5 flex items-center gap-2 h-11 max-w-[550px] rounded-lg border border-dashed border-[#d9ccc1] px-3 focus-within:border-[#2a2322] focus-within:border-solid">
+                          <SquarePen className="w-4 h-4 text-gray-400 shrink-0" aria-hidden />
+                          <span className="sr-only">Note for the butcher</span>
+                          <input
+                            key={`${l.key}|${l.c.note ?? ''}`} defaultValue={l.c.note ?? ''} placeholder="Add a note for the butcher" maxLength={140}
+                            onBlur={(e) => { const v = e.target.value.trim(); if (v !== (l.c.note ?? '')) cartUpdate(l.key, { note: v }); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            className="flex-1 min-w-0 bg-transparent outline-none text-base md:text-sm"
+                          />
+                        </label>
+                      )}
+                      <button onClick={() => cartRemove(l.key)} className="mt-1.5 min-h-9 text-sm text-gray-700 underline underline-offset-4 hover:text-[#c8151d]" aria-label={`Remove ${l.p.name}`}>Remove</button>
                     </div>
-                    <p className="text-xs text-gray-600 -mt-2">
-                      {l.p.soldByWeight ? `${fmtKg(l.kg!)} · ${peso(l.info.price)}/kg` : `${l.p.size} · ${peso(l.info.price)}`}
-                      {l.cut && ` · ${l.cut.name}${cutFeeText(l.cut) ? ` (${cutFeeText(l.cut)})` : ''}`}
-                    </p>
-                    <StorageBadge p={l.p} className="mt-1" />
-                    {l.avail === 0 ? (
-                      <p className="text-xs font-semibold text-[#a3111a] mt-1">Unavailable at {branch.name} — remove this item</p>
-                    ) : !l.p.soldByWeight && l.c.qty > l.avail ? (
-                      <p className="text-xs font-semibold text-amber-800 mt-1">Only {l.avail} available</p>
-                    ) : null}
-                    <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
-                      <p className="text-base font-bold text-[#c8151d]">{peso(l.total)}{l.p.soldByWeight && <span className="text-[11px] font-medium text-gray-500"> est.</span>}</p>
-                      {l.avail > 0 && (l.p.soldByWeight
-                        ? <WeightStepper size="sm" kg={l.kg!} min={minKg(l.p)} onChange={(kg) => cartUpdate(l.key, { weightKg: kg })} />
-                        : <Stepper size="sm" qty={l.c.qty} max={l.avail} onChange={(n) => cartUpdate(l.key, { qty: n })} />)}
+                  </div>
+
+                  {/* Quantity + total (one row on phones) */}
+                  <div className="col-start-2 md:col-start-auto flex items-center justify-between gap-3 md:contents">
+                    <div className="md:flex md:justify-center md:self-start">
+                      {l.avail > 0 && (l.p.soldByWeight ? (
+                        <QtyBox
+                          what="weight" label={fmtKg(l.kg!)}
+                          onMinus={() => cartUpdate(l.key, { weightKg: Math.max(minKg(l.p), l.kg! - step) })} minusDisabled={l.kg! <= minKg(l.p)}
+                          onPlus={() => cartUpdate(l.key, { weightKg: l.kg! + step })}
+                        />
+                      ) : (
+                        <QtyBox
+                          what="quantity" label={qtyLabel(l.p, l.c.qty)}
+                          onMinus={() => cartUpdate(l.key, { qty: l.c.qty - 1 })}
+                          onPlus={() => cartUpdate(l.key, { qty: l.c.qty + 1 })} plusDisabled={l.c.qty >= l.avail}
+                        />
+                      ))}
+                    </div>
+                    <div className="text-right md:self-start md:pt-2.5">
+                      <p className={cn('text-lg font-bold tabular-nums whitespace-nowrap',l.avail === 0 ? 'text-gray-400 line-through' : 'text-[#2a2322]')}>{l.p.soldByWeight ? '≈ ' : ''}{money(l.total)}</p>
+                      {l.p.soldByWeight && <p className="text-xs text-gray-500">by weight</p>}
                     </div>
                   </div>
                 </div>
-                {l.avail > 0 && (
-                  <div className="mt-2.5 pt-2 border-t border-[#f1e8e1] flex items-center gap-2 text-xs">
-                    <button onClick={() => setNoteOpen(noteOpen === l.key ? null : l.key)} className="flex items-center gap-1.5 text-gray-700 min-w-0 flex-1 text-left min-h-11 hover:text-[#c8151d]">
-                      <MessageSquareText className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{l.c.note ? `“${l.c.note}”` : 'Add note for the butcher'}</span>
-                    </button>
-                    {cuts.length > 0 && (
-                      <select value={l.c.cutId ?? ''} onChange={(e) => cartUpdate(l.key, { cutId: e.target.value || null })} aria-label="Cut and preparation" className="h-11 md:h-9 max-w-[45%] rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-[#c8151d]">
-                        {!l.c.cutId && <option value="">Choose cut</option>}
-                        {cuts.map((c) => <option key={c.id} value={c.id}>{c.name}{cutFeeText(c) ? ` (${cutFeeText(c)})` : ''}</option>)}
-                      </select>
-                    )}
-                    <Link href={editHref(l.p.id, l.key)} className="w-11 h-11 md:w-9 md:h-9 shrink-0 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:border-[#c8151d] hover:text-[#c8151d]" aria-label={`Edit ${l.p.name}`}><Pencil className="w-4 h-4" /></Link>
-                  </div>
-                )}
-                {noteOpen === l.key && (
-                  <input autoFocus defaultValue={l.c.note ?? ''} onBlur={(e) => { cartUpdate(l.key, { note: e.target.value }); setNoteOpen(null); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                    aria-label="Note for the butcher" placeholder="e.g. less fat, please" className="mt-2 w-full h-11 rounded-xl border border-gray-200 px-3 text-base md:text-sm outline-none focus:border-[#c8151d]" />
-                )}
-              </Card>
-            );
-          })}
-          {hasWeighted && <p className="text-xs text-gray-600 px-1">⚖️ Weights are estimates. Final price is set when your meat is weighed.</p>}
+              );
+            })}
+            {hasWeighted && (
+              <div className="px-4 md:px-5 py-4 flex gap-3 text-sm text-gray-600">
+                <Scale className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+                <p>Items sold by weight are estimates. We weigh each cut after preparation and you pay the actual weight, usually within 5%. Any difference is refunded or charged automatically.</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Summary */}
-        <div className="md:sticky md:top-[140px] space-y-3">
-          <Card className="p-4">
-            <p className="font-display uppercase tracking-wide text-lg font-semibold">Order summary</p>
-            <div className="flex items-center justify-between mt-3">
-              <span className="text-sm text-gray-600">Subtotal ({okLines.length} item{okLines.length === 1 ? '' : 's'})</span>
-              <span className="text-lg font-bold text-gray-900">{peso(subtotal)}</span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Delivery fee and payment options are shown at checkout.</p>
-            {belowMin && (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 mt-3">
-                <p className="text-xs text-amber-900"><b>Add {peso(minOrder - subtotal)} more</b> to reach the {pesoShort(minOrder)} minimum order.</p>
-                <div className="h-1.5 bg-amber-100 rounded-full mt-2 overflow-hidden"><div className="h-full bg-amber-500 rounded-full" style={{ width: `${Math.min(100, (subtotal / minOrder) * 100)}%` }} /></div>
+        <div className="lg:sticky lg:top-[140px] space-y-3">
+          <section className="rounded-xl border border-[#eadfd6] bg-[#fffdfb]" aria-labelledby="cart-summary">
+            <h2 id="cart-summary" className="px-5 py-4 border-b border-[#eadfd6] text-lg md:text-xl font-semibold text-[#2a2322]">Order summary</h2>
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-[#efe9e4] p-1" role="radiogroup" aria-label="Delivery or pickup">
+                <ModeBtn on={delivery} disabled={!deliveryOk} onClick={() => setMode('delivery')} label="Delivery" sub={deliveryOk ? `about ${eta} min` : 'Not available'} />
+                <ModeBtn on={!delivery} disabled={!canPickup} onClick={() => setMode('pickup')} label="Pickup" sub={canPickup ? `ready in ${prep} min` : 'Not available'} />
               </div>
-            )}
-            <div className="hidden md:block mt-4">{checkoutBtn}</div>
-            {!shopper && <p className="text-xs text-gray-500 mt-2 text-center">You&apos;ll sign in or create an account next.</p>}
-          </Card>
-          <Link href="/category" className="hidden md:flex min-h-11 items-center justify-center gap-1 text-sm font-semibold text-[#c8151d] hover:underline">Continue shopping <ChevronRight className="w-4 h-4" /></Link>
+              {!deliveryOk && deliveryBlockReason && <p className="mt-2 text-xs text-amber-800">{deliveryBlockReason}</p>}
+
+              <div className="mt-3 rounded-lg border border-[#eadfd6] bg-white p-3.5 flex items-center gap-3">
+                {delivery ? <MapPin className="w-5 h-5 text-[#2a2322] shrink-0" aria-hidden /> : <Store className="w-5 h-5 text-[#2a2322] shrink-0" aria-hidden />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[#2a2322] truncate">{delivery ? `${address.label} · ${streetPart(address.line)}` : `${branch.name} branch`}</p>
+                  <p className="text-xs text-gray-600 truncate">{delivery ? `${dz?.distance ?? 0} km · about ${eta} min` : `${branch.address} · ready in ${prep} min`}</p>
+                </div>
+                <button onClick={openLocation} className="min-h-11 px-1 text-sm font-semibold text-[#c8151d] hover:underline shrink-0">Change</button>
+              </div>
+
+              <div className="mt-4 space-y-2.5 text-sm">
+                <div className="flex justify-between gap-2"><span className="text-gray-700">Items ({okLines.length}{hasWeighted ? ', estimated' : ''})</span><span className="tabular-nums">{approx}{money(subtotal)}</span></div>
+                {delivery && <div className="flex justify-between gap-2"><span className="text-gray-700">Delivery fee</span><span className={cn('tabular-nums', deliveryFee === 0 && 'text-[#1f6b3f] font-semibold')}>{deliveryFee === 0 ? 'Free' : money(deliveryFee)}</span></div>}
+              </div>
+              <div className="mt-3 pt-3 border-t border-[#eadfd6] flex justify-between items-baseline gap-2">
+                <span className="text-base md:text-lg font-semibold text-[#2a2322]">Estimated total</span>
+                <span className="text-lg md:text-xl font-bold tabular-nums text-[#2a2322]">{approx}{money(estTotal)}</span>
+              </div>
+
+              {!!freeAbove && (
+                <div className="mt-3">
+                  <p className="text-xs text-[#2a2322]">{subtotal >= freeAbove ? 'You get free delivery' : `${money(freeAbove - subtotal)} more for free delivery`}</p>
+                  <div className="h-1.5 bg-[#ece5de] rounded-full mt-1.5 overflow-hidden"><div className="h-full bg-[#1f6b3f] rounded-full" style={{ width: `${Math.min(100, (subtotal / freeAbove) * 100)}%` }} /></div>
+                </div>
+              )}
+
+              {belowMin && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 mt-3">
+                  <p className="text-xs text-amber-900"><b>Add {peso(minOrder - subtotal)} more</b> to reach the {pesoShort(minOrder)} minimum order.</p>
+                  <div className="h-1.5 bg-amber-100 rounded-full mt-2 overflow-hidden"><div className="h-full bg-amber-500 rounded-full" style={{ width: `${Math.min(100, (subtotal / minOrder) * 100)}%` }} /></div>
+                </div>
+              )}
+
+              <div className="hidden md:block mt-4">{checkoutBtn}</div>
+              {!shopper && <p className="text-xs text-gray-500 mt-2 text-center">You&apos;ll sign in or create an account next.</p>}
+              <p className="mt-3 text-xs text-gray-500 text-center">GCash · Maya · Visa · Mastercard · {delivery ? 'Cash on delivery' : 'Pay at pickup'}</p>
+            </div>
+          </section>
+
+          {cold && (
+            <div className="rounded-xl border border-[#eadfd6] bg-[#fffdfb] px-4 py-3.5 flex gap-3 text-sm text-[#2a2322]">
+              <Snowflake className="w-5 h-5 shrink-0 text-[#2c4f9e]" aria-hidden />
+              <p>
+                {delivery
+                  ? <>Packed in an insulated bag with ice packs and delivered within {meatMaxMins(s, branch.id)} minutes of packing.</>
+                  : <>Packed in an insulated bag with ice packs. Please keep it cold on the way home.</>}
+              </p>
+            </div>
+          )}
+          <Link href="/category" className="flex min-h-11 items-center justify-center gap-1.5 text-sm font-semibold text-[#c8151d] hover:underline">
+            <ArrowLeft className="w-4 h-4" /> Continue shopping
+          </Link>
         </div>
       </div>
 
       <MobileActionBar>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-gray-600">Subtotal</span>
-          <span className="text-lg font-bold text-gray-900">{peso(subtotal)}</span>
+          <span className="text-sm text-gray-600">Estimated total</span>
+          <span className="text-lg font-bold text-gray-900 tabular-nums">{approx}{money(estTotal)}</span>
         </div>
         {checkoutBtn}
       </MobileActionBar>
+
+      <Sheet open={clearOpen} onClose={() => setClearOpen(false)} title="Remove all items?">
+        <p className="text-sm text-gray-700">This empties your cart ({lines.length} item{lines.length === 1 ? '' : 's'}). You can&apos;t undo this.</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button onClick={() => setClearOpen(false)} className="h-12 rounded-lg border border-[#d9ccc1] text-sm font-semibold text-[#2a2322]">Keep items</button>
+          <button onClick={() => { mutate((d) => { d.cart = []; }); setClearOpen(false); flash('Cart cleared', 'info'); }} className="h-12 rounded-lg bg-[#c8151d] hover:bg-[#a3111a] text-white font-semibold text-sm">Remove all</button>
+        </div>
+      </Sheet>
     </Container>
+  );
+}
+
+function CartHeading({ sub, right }: { sub?: string; right?: React.ReactNode }) {
+  return (
+    <>
+      <nav className="hidden md:flex items-center gap-1.5 text-sm text-gray-500 pt-6" aria-label="Breadcrumb">
+        <Link href="/" className="hover:text-[#c8151d]">Home</Link>
+        <ChevronRight className="w-3.5 h-3.5" aria-hidden />
+        <span className="font-semibold text-[#2a2322]">Shopping cart</span>
+      </nav>
+      <div className="flex items-end justify-between gap-3 pt-4 md:pt-5">
+        <div className="min-w-0">
+          <h1 className="text-[26px] md:text-[32px] font-semibold text-[#2a2322] leading-tight">Shopping cart</h1>
+          {sub && <p className="text-sm text-gray-600 mt-1 truncate">{sub}</p>}
+        </div>
+        {right}
+      </div>
+    </>
+  );
+}
+
+function ModeBtn({ on, disabled, onClick, label, sub }: { on: boolean; disabled?: boolean; onClick: () => void; label: string; sub: string }) {
+  return (
+    <button
+      role="radio" aria-checked={on} disabled={disabled} onClick={onClick}
+      className={cn('rounded-md px-2 py-2 min-h-12 text-center transition', on ? 'bg-white shadow-sm text-[#2a2322]' : 'text-gray-600 hover:text-[#2a2322]', disabled && 'opacity-40')}
+    >
+      <span className="block text-sm font-semibold">{label}</span>
+      <span className="block text-xs text-gray-500">{sub}</span>
+    </button>
   );
 }
 

@@ -3,7 +3,8 @@
 
 import type { AppState, Order, Rider } from '@/src/lib/types';
 import { addAudit, addNotification, mutate, uid } from '@/src/lib/store';
-import { assignRider, getSetting } from '@/src/lib/logic';
+import { assignRider, getSetting, num } from '@/src/lib/logic';
+import { PAY_RULES, orderDistance, tipFor, tripEarnings } from '@/src/components/delivery/helpers';
 
 export const NOTE = {
   accepted: (r: Rider) => `Accepted by ${r.name}`,
@@ -113,7 +114,66 @@ export function podMethod(s: AppState, branchId: string) {
 
 export function mapsLinks(lat: number, lng: number) {
   return {
-    google: `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`,
+    google: `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
     waze: `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`,
   };
+}
+
+/** Items the rider carries (removed / out-of-stock lines are left out). */
+export function liveItems(o: Order) {
+  return o.items.filter((i) => i.pickStatus !== 'removed' && i.pickStatus !== 'out_of_stock');
+}
+export function itemName(i: Order['items'][number]) {
+  return i.substitute?.status === 'accepted' ? i.substitute.name : i.name;
+}
+
+/** Barangay of the drop-off ("Purok 3, Dawis, Digos City" → "Dawis"). */
+export function areaOf(o: Order) {
+  const parts = (o.address?.line ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 2] : parts[0] ?? '—';
+}
+
+export function isCodDue(o: Order) {
+  return o.paymentMethod === 'cod' && o.paymentStatus === 'pending';
+}
+
+/** Where the rider is in the job: label for the job header / current-job card. */
+export function stageOf(o: Order) {
+  if (o.status === 'failed_delivery') return 'Return to shop';
+  if (o.status === 'ready') return hasStep(o, NOTE.arrivedBranch) ? 'Pick up' : 'Go to shop';
+  return hasStep(o, NOTE.arrivedDrop) ? 'At customer' : 'On the way';
+}
+
+/** Cold-chain limit in minutes: the order's own, else the branch's meatMaxDeliveryMins setting. */
+export function maxMins(s: AppState, o: Order) {
+  return o.maxDeliveryMins || num(getSetting(s, 'meatMaxDeliveryMins', o.branchId)) || 60;
+}
+
+/** Delivery window from pickup (outForDeliveryAt) + the cold-chain limit. `left` is 0–1 of the window remaining. */
+export function deliveryWindow(s: AppState, o: Order, now: number) {
+  if (!o.outForDeliveryAt) return undefined;
+  const mins = maxMins(s, o);
+  const due = Date.parse(o.outForDeliveryAt) + mins * 60_000;
+  return { due: new Date(due).toISOString(), mins, minsLeft: Math.ceil((due - now) / 60_000), overdue: now > due, left: Math.max(0, Math.min(1, (due - now) / (mins * 60_000))) };
+}
+
+/** Delivered trips of a rider on one calendar day, newest first. */
+export function tripsOn(s: AppState, r: Rider, day: Date) {
+  const key = day.toDateString();
+  return s.orders
+    .filter((o) => o.riderId === r.id && o.status === 'delivered' && o.completedAt && new Date(o.completedAt).toDateString() === key)
+    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+}
+
+/**
+ * Pay for a list of trips with the same rule as each trip's payout (PAY_RULES: base + per km, rounded per trip),
+ * so base + distance + tips always equals the sum of the trip rows.
+ */
+export function payFor(s: AppState, r: Rider, trips: Order[]) {
+  const rule = PAY_RULES[r.type];
+  const trip = trips.reduce((t, o) => t + tripEarnings(s, o, r), 0);
+  const base = trips.length * rule.base;
+  const km = Math.round(trips.reduce((t, o) => t + orderDistance(s, o), 0) * 10) / 10;
+  const tips = trips.reduce((t, o) => t + tipFor(o), 0);
+  return { trips: trips.length, base, km, perKm: rule.perKm, baseRate: rule.base, distance: trip - base, tips, total: trip + tips };
 }
