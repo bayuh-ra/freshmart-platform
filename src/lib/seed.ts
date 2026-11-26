@@ -5,7 +5,7 @@ import type {
 } from './types';
 
 // Bump when the seed shape changes: browsers holding an older version reseed once.
-export const STATE_VERSION = 28;
+export const STATE_VERSION = 31;
 
 // Deterministic pseudo-random so the seed looks the same on every reset.
 function rng(seed: number) {
@@ -1315,6 +1315,8 @@ export function createSeed(): AppState {
         branches: { on: false, reason: 'One branch at launch', changedAt: daysAgo(3) },
         content: { on: true },
         otp: { on: false, reason: 'No OTP at launch', changedAt: daysAgo(3) },
+        refunds: { on: false, reason: 'Not in Phase 1 scope: refunds are done in the PayMongo dashboard', changedAt: daysAgo(3) },
+        riderchat: { on: false, reason: 'Not in Phase 1 scope: riders call the customer', changedAt: daysAgo(3) },
       },
       limits: { cities: 1, branches: 1, staff: 10, riders: 30, products: 120, smsPerMonth: 500 },
       smsUsed: 0,

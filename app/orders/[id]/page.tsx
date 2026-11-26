@@ -26,6 +26,7 @@ import {
 } from '@/src/lib/logic';
 import type { AppState, Order, OrderItem, OrderStatus, PaymentMethod } from '@/src/lib/types';
 import { cn } from '@/src/lib/utils';
+import { moduleOn } from '@/src/lib/platform';
 import { RejectDialog, cutLabel } from '../_shared';
 import { ProductImage } from '@/src/components/ProductImage';
 import {
@@ -1008,7 +1009,7 @@ export default function OrderDetailPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              {canEdit && ['paid', 'partially_refunded'].includes(o.paymentStatus) && refundable > 0 && (
+              {canEdit && moduleOn(s, 'refunds') && ['paid', 'partially_refunded'].includes(o.paymentStatus) && refundable > 0 && (
                 <LightButton className="sm:h-11 rounded-xl" onClick={() => setRefundOpen(true)}><Undo2 className="w-4 h-4" {...ICON} />Refund</LightButton>
               )}
               {canEdit && isOpen && !awaiting && !outDelivery && (
@@ -1430,7 +1431,7 @@ export default function OrderDetailPage() {
       </div>
 
       {/* Print-only section */}
-      {printMode && <PrintView o={o} mode={printMode} s={s} />}
+      {printMode === 'receipt' ? <ReceiptSlip o={o} s={s} /> : printMode && <PrintView o={o} mode={printMode} s={s} />}
 
       <RejectDialog order={rejecting ? o : null} reasons={s.rejectReasons} onClose={() => setRejecting(false)} />
       <CancelDialog open={cancelOpen} onClose={() => setCancelOpen(false)} o={o} reasons={s.rejectReasons} noShow={o.status === 'ready' && o.fulfillment === 'pickup' && holdExpired ? String(getSetting(s, 'noShowPolicy', o.branchId)) : undefined} />
@@ -1688,6 +1689,71 @@ function PrintView({ o, mode, s }: { o: Order; mode: Exclude<PrintMode, null>; s
       {mode === 'pick' && <p className="mt-3">Picker: {o.pickerName ?? '________________'} · Checked by: ________________</p>}
       {mode === 'receipt' && <p className="mt-6 text-center font-bold">This is not an official receipt.</p>}
       <p className="mt-2 text-center text-[10px]">Printed {fmtDateTime(new Date().toISOString())}</p>
+    </div>
+  );
+}
+
+const slipMoney = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function SlipRule() { return <div className="my-1.5 border-t border-dashed border-black" />; }
+function SlipRow({ l, r }: { l: React.ReactNode; r: React.ReactNode }) {
+  return <div className="flex justify-between gap-2"><span>{l}</span><span className="text-right whitespace-nowrap">{r}</span></div>;
+}
+
+/** Till-roll receipt for an 80 mm receipt printer (like a mall receipt), not full-size paper. */
+function ReceiptSlip({ o, s }: { o: Order; s: AppState }) {
+  const branch = s.branches.find((b) => b.id === o.branchId)!;
+  const items = o.items.filter((i) => i.pickStatus !== 'removed' && i.pickStatus !== 'out_of_stock');
+  const placed = new Date(o.placedAt);
+  const cashier = o.timeline[0]?.by;
+  return (
+    <div className="hidden print:block text-black">
+      {/* Roll width: 80 mm paper, 72 mm printable. Height follows the content. */}
+      <style>{'@page { size: 80mm auto; margin: 0; }'}</style>
+      <div className="w-[72mm] mx-auto px-[2mm] py-[4mm] font-mono text-[11px] leading-snug">
+        <div className="text-center">
+          <p className="text-[14px] font-bold uppercase">Jovanne’s Meat Shop</p>
+          <p>{branch.name} Branch</p>
+          <p>{branch.address}</p>
+          <p>Tel {branch.phone}</p>
+        </div>
+        <SlipRule />
+        <p className="text-center font-bold">ORDER RECEIPT</p>
+        <SlipRow l="Order" r={o.number} />
+        <SlipRow l="Date" r={`${placed.toLocaleDateString('en-PH')} ${placed.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}`} />
+        {cashier && <SlipRow l="Staff" r={cashier} />}
+        <SlipRow l="Customer" r={o.customerName} />
+        <SlipRow l={CHANNEL_LABEL[o.channel]} r={o.fulfillment === 'delivery' ? 'Delivery' : o.status === 'collected' && o.channel === 'walk_in' ? 'Counter' : 'Pickup'} />
+        <SlipRule />
+        {items.map((i, k) => {
+          const sub = i.substitute?.status === 'accepted' ? i.substitute : undefined;
+          const unit = sub ? sub.unitPrice : i.unitPrice;
+          const qty = i.soldByWeight ? `${(i.actualWeightKg ?? i.estWeightKg ?? 1).toFixed(3)} kg` : `${i.qty}`;
+          const cut = cutLabel(i.cut);
+          return (
+            <div key={k} className="mb-1">
+              <p className="uppercase">{sub ? sub.name : i.name}</p>
+              <SlipRow l={<span className="pl-2">{qty} x {slipMoney(unit)}</span>} r={slipMoney(lineTotal(i))} />
+              {cut && <p className="pl-2">{cut}</p>}
+            </div>
+          );
+        })}
+        <SlipRule />
+        <SlipRow l={`Subtotal (${items.length} item${items.length === 1 ? '' : 's'})`} r={slipMoney(o.subtotal)} />
+        {o.deliveryFee > 0 && <SlipRow l="Delivery fee" r={slipMoney(o.deliveryFee)} />}
+        {o.serviceFee > 0 && <SlipRow l="Service fee" r={slipMoney(o.serviceFee)} />}
+        {o.discount > 0 && <SlipRow l="Discount" r={`-${slipMoney(o.discount)}`} />}
+        <div className="mt-1 flex justify-between text-[15px] font-bold"><span>TOTAL</span><span>₱{slipMoney(o.total)}</span></div>
+        {o.refundedAmount > 0 && <SlipRow l="Refunded" r={`-${slipMoney(o.refundedAmount)}`} />}
+        <SlipRule />
+        <SlipRow l="Payment" r={PAYMENT_LABEL[o.paymentMethod]} />
+        <SlipRow l="Status" r={o.paymentStatus.replace('_', ' ')} />
+        <SlipRule />
+        <div className="text-center">
+          <p className="font-bold">Salamat po! Thank you!</p>
+          <p className="mt-1">THIS IS NOT AN OFFICIAL RECEIPT</p>
+          <p className="mt-1 text-[10px]">Printed {fmtDateTime(new Date().toISOString())}</p>
+        </div>
+      </div>
     </div>
   );
 }

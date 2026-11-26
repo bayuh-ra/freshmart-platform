@@ -29,6 +29,8 @@ export const MODULES: ModuleDef[] = [
   { key: 'branches', label: 'Cities & Branches management', description: 'Add and edit cities and branches.', paths: ['/admin/branches'] },
   { key: 'content', label: 'App Content', description: 'Banners, home sections and help pages.', paths: ['/admin/content'] },
   { key: 'otp', label: 'Phone OTP verification', description: 'One-time code by SMS at sign-up and log-in.', paths: [] },
+  { key: 'refunds', label: 'Order refunds', description: 'Refund button on the order page. When off, staff refund in the payment gateway dashboard.', paths: [] },
+  { key: 'riderchat', label: 'Rider–customer messages', description: 'Quick-message button in the Rider App. When off, riders call the customer.', paths: [] },
 ];
 
 /** Screens that are always on (the core of the platform). */

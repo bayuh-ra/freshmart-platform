@@ -23,10 +23,12 @@ interface Props {
   children: React.ReactNode;
   /** Hide the branch switcher (pages that are not branch-scoped). */
   hideBranch?: boolean;
+  /** Full-bleed content: no page padding (used by the Counter screen). */
+  bare?: boolean;
 }
 
 /** Staff shell: icon-rail sidebar + top bar (breadcrumb, search, branch, notifications, user). */
-export function DashboardLayout({ title, eyebrow, crumbs, children, hideBranch }: Props) {
+export function DashboardLayout({ title, eyebrow, crumbs, children, hideBranch, bare }: Props) {
   const trail = crumbs ?? [...(eyebrow ? [{ label: eyebrow }] : []), { label: title }];
   return (
     <div className="min-h-screen bg-[#f7f3ef]">
@@ -35,7 +37,7 @@ export function DashboardLayout({ title, eyebrow, crumbs, children, hideBranch }
       <NewOrderWatcher />
       {/* md+: offset by the 68px icon rail. Phones: no rail (drawer instead), full width. */}
       <main className="pt-14 md:pt-16 md:ml-[68px] min-h-screen min-w-0 overflow-x-clip">
-        <div className="p-4 sm:p-6 md:p-8"><ClientGate>{children}</ClientGate></div>
+        <div className={bare ? undefined : 'p-4 sm:p-6 md:p-8'}><ClientGate>{children}</ClientGate></div>
       </main>
     </div>
   );

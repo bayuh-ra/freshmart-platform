@@ -18,6 +18,7 @@ import {
 import { PhotoCapture, PinEntry, SignaturePad } from './ProofOfDelivery';
 import { ActionBar, HEADING, btn, card } from './ui';
 import { cn } from '@/src/lib/utils';
+import { moduleOn } from '@/src/lib/platform';
 
 const FAIL_REASONS = ['Customer unreachable', 'Wrong address', 'Refused by customer', 'Unsafe location'];
 const QUICK_CHAT = ["I'm on my way 🛵", "I've arrived at your gate", "I can't find the address — can you share a landmark?", 'Running ~5 min late, sorry!'];
@@ -122,6 +123,7 @@ export function ActiveJob({ order, rider }: { order: Order; rider: Rider }) {
   const s = useStore();
   const o = s.orders.find((x) => x.id === order.id) ?? order;
   const b = s.branches.find((x) => x.id === o.branchId)!;
+  const chatOn = moduleOn(s, 'riderchat');
   const dest = o.address ?? b;
   const [checked, setChecked] = useState<Record<number, boolean>>({});
   const [photo, setPhoto] = useState<string | null>(null);
@@ -221,11 +223,11 @@ export function ActiveJob({ order, rider }: { order: Order; rider: Rider }) {
         <div className="flex shrink-0 gap-2">
           <a href={`tel:${o.customerMobile.replace(/[^\d+]/g, '')}`} aria-label={`Call ${o.customerName}`}
             className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e3efe6] text-[#1f6b3f] hover:bg-[#d3e6d9] sm:h-14 sm:w-14"><Phone className="h-5 w-5" /></a>
-          <button type="button" aria-label={`Message ${o.customerName}`} aria-expanded={chatOpen} onClick={() => setChatOpen((v) => !v)}
-            className={cn('flex h-12 w-12 items-center justify-center rounded-full text-[#2a2322] sm:h-14 sm:w-14', chatOpen ? 'bg-[#e5d6c8]' : 'bg-[#f1e9e1] hover:bg-[#e9ded3]')}><MessageSquareText className="h-5 w-5" /></button>
+          {chatOn && <button type="button" aria-label={`Message ${o.customerName}`} aria-expanded={chatOpen} onClick={() => setChatOpen((v) => !v)}
+            className={cn('flex h-12 w-12 items-center justify-center rounded-full text-[#2a2322] sm:h-14 sm:w-14', chatOpen ? 'bg-[#e5d6c8]' : 'bg-[#f1e9e1] hover:bg-[#e9ded3]')}><MessageSquareText className="h-5 w-5" /></button>}
         </div>
       </div>
-      {chatOpen && (
+      {chatOn && chatOpen && (
         <div className="space-y-1.5 rounded-lg border border-[#eadfd6] bg-white p-2">
           <p className="px-1 text-xs text-stone-600">Quick message to {o.customerName.split(' ')[0]} (masked chat — your number stays hidden)</p>
           {QUICK_CHAT.map((m) => (

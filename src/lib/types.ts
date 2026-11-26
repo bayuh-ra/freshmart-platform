@@ -554,7 +554,7 @@ export interface Session {
 // ---------------- Platform Owner (LAP IT Solutions) ----------------
 export type ModuleKey =
   | 'walkin' | 'endofday' | 'purchasing' | 'pricing' | 'inventory' | 'delivery' | 'customers'
-  | 'promotions' | 'support' | 'reports' | 'branches' | 'content' | 'otp';
+  | 'promotions' | 'support' | 'reports' | 'branches' | 'content' | 'otp' | 'refunds' | 'riderchat';
 export type LimitKey = 'cities' | 'branches' | 'staff' | 'riders' | 'products' | 'smsPerMonth';
 export interface ModuleState { on: boolean; reason?: string; changedAt?: string }
 export interface PlatformLog { id: ID; at: string; user: string; action: string; detail: string; oldValue?: string; newValue?: string }
